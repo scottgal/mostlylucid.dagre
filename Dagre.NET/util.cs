@@ -70,7 +70,21 @@ namespace Dagre
         public static string uniqueId(string str)
         {
             var id = Interlocked.Increment(ref uniqueCounter);
-            return str + id;
+            return string.Create(str.Length + CountDigits(id), (str, id), static (span, state) =>
+            {
+                state.str.AsSpan().CopyTo(span);
+                state.id.TryFormat(span[state.str.Length..], out _);
+            });
+        }
+
+        private static int CountDigits(int n)
+        {
+            if (n < 10) return 1;
+            if (n < 100) return 2;
+            if (n < 1000) return 3;
+            if (n < 10000) return 4;
+            if (n < 100000) return 5;
+            return n.ToString().Length;
         }
         public static int uniqueCounter = 0;
 
@@ -124,8 +138,8 @@ namespace Dagre
                 var simpleMinlen = r != null ? r.Minlen : 1;
 
                 var merged = new EdgeLabel();
-                merged["weight"] = simpleWeight + label.Weight;
-                merged["minlen"] = Math.Max(simpleMinlen, label.Minlen);
+                merged.Weight = simpleWeight + label.Weight;
+                merged.Minlen = Math.Max(simpleMinlen, label.Minlen);
 
                 simplified.SetEdge(e.v, e.w, merged);
             }

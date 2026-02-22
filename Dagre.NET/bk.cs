@@ -42,39 +42,33 @@ namespace Dagre
                 }
             }
 
+            bool usePredecessors = neighborFnName == "predecessors";
+            // Reusable buffer to avoid allocating arrays per node
+            var wsBuf = new List<string>();
+
             foreach (var layer in layering)
             {
                 var prevIdx = -1;
                 foreach (var v in layer)
                 {
-                    string[] ws;
-                    if (neighborFnName == "predecessors")
+                    wsBuf.Clear();
+                    // Collect neighbors directly from KeyCollection — no array allocation
+                    var keys = usePredecessors ? g.PredecessorKeys(v) : g.SuccessorKeys(v);
+                    if (keys != null)
                     {
-                        ws = g.Predecessors(v);
-                    }
-                    else
-                    {
-                        ws = g.Successors(v);
-                    }
-                    // Filter to only neighbors present in the layering
-                    if (ws.Length != 0)
-                    {
-                        int count = 0;
-                        for (int fi = 0; fi < ws.Length; fi++)
+                        foreach (var k in keys)
                         {
-                            if (pos.ContainsKey(ws[fi]))
-                                ws[count++] = ws[fi];
+                            if (pos.ContainsKey(k))
+                                wsBuf.Add(k);
                         }
-                        if (count != ws.Length)
-                            ws = ws[..count];
                     }
-                    if (ws.Length != 0)
+                    if (wsBuf.Count != 0)
                     {
-                        Array.Sort(ws, (a, b) => pos[a] - pos[b]);
-                        double mp = (ws.Length - 1) / 2.0;
+                        wsBuf.Sort((a, b) => pos[a] - pos[b]);
+                        double mp = (wsBuf.Count - 1) / 2.0;
                         for (int i = (int)Math.Floor(mp), il = (int)Math.Ceiling(mp); i <= il; ++i)
                         {
-                            var w = ws[i];
+                            var w = wsBuf[i];
                             if (align[v] == v && prevIdx < pos[w] && !hasConflict(conflicts, v, w))
                             {
                                 align[w] = v;
@@ -180,6 +174,7 @@ namespace Dagre
                 string elem = stack[stack.Count - 1];
                 stack.RemoveAt(stack.Count - 1);
                 var visited = new HashSet<string>(StringComparer.Ordinal);
+                bool usePreds = nextNodesFunc == "predecessors";
                 while (elem != null)
                 {
                     if (!visited.Add(elem))
@@ -189,15 +184,13 @@ namespace Dagre
                     else
                     {
                         stack.Add(elem);
-                        string[] neighbors;
-                        if (nextNodesFunc == "predecessors")
-                            neighbors = blockG.Predecessors(elem);
-                        else
-                            neighbors = blockG.Successors(elem);
-
-                        foreach (var item in neighbors)
+                        var neighborKeys = usePreds ? blockG.PredecessorKeys(elem) : blockG.SuccessorKeys(elem);
+                        if (neighborKeys != null)
                         {
-                            stack.Add(item);
+                            foreach (var item in neighborKeys)
+                            {
+                                stack.Add(item);
+                            }
                         }
                     }
                     if (stack.Count == 0) break;
@@ -573,10 +566,9 @@ namespace Dagre
                         var nd = g.Node(v);
                         if (nd.Dummy == "border")
                         {
-                            var predecessors = g.Predecessors(v);
-                            if (predecessors.Length != 0)
+                            if (g.PredecessorCount(v) != 0)
                             {
-                                nextNorthPos = (g.Node(predecessors[0])).Order;
+                                nextNorthPos = (g.Node(g.FirstPredecessor(v))).Order;
                                 // scan
                                 for (var si = southPos; si < southLookahead; si++)
                                 {

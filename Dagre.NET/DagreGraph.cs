@@ -70,7 +70,15 @@ namespace Dagre
             if (!isDirected && string.CompareOrdinal(v, w) > 0)
                 (v, w) = (w, v);
             var n = name ?? DEFAULT_EDGE_NAME;
-            return string.Concat(v, EDGE_KEY_DELIM, w, EDGE_KEY_DELIM, n);
+            var totalLen = v.Length + 1 + w.Length + 1 + n.Length;
+            return string.Create(totalLen, (v, w, n), static (span, state) =>
+            {
+                state.v.AsSpan().CopyTo(span);
+                span[state.v.Length] = '\x01';
+                state.w.AsSpan().CopyTo(span[(state.v.Length + 1)..]);
+                span[state.v.Length + 1 + state.w.Length] = '\x01';
+                state.n.AsSpan().CopyTo(span[(state.v.Length + 1 + state.w.Length + 1)..]);
+            });
         }
 
         /// <summary>
@@ -116,7 +124,7 @@ namespace Dagre
             if (!_isDirected && string.CompareOrdinal(v, w) > 0)
                 (v, w) = (w, v);
 
-            var edgeObj = new DagreEdgeIndex { v = v, w = w, name = name };
+            var edgeObj = new DagreEdgeIndex { v = v, w = w, name = name, _key = e };
             _edgeObjs[e] = edgeObj;
             InvalidateEdgesCache();
 
@@ -149,6 +157,8 @@ namespace Dagre
 
         public EdgeLabel Edge(DagreEdgeIndex v)
         {
+            if (v._key != null)
+                return _edgeLabels.TryGetValue(v._key, out var label) ? label : null;
             return Edge(v.v, v.w, v.name);
         }
         public EdgeLabel Edge(string v, string w, string name = null)
@@ -211,7 +221,7 @@ namespace Dagre
         internal void InvalidateEdgesCache() => _edgesCache = null;
         internal DagreGraph RemoveEdge(DagreEdgeIndex edgeIndex)
         {
-            return RemoveEdgeByKey(EdgeArgsToId(_isDirected, edgeIndex.v, edgeIndex.w, edgeIndex.name));
+            return RemoveEdgeByKey(edgeIndex._key ?? EdgeArgsToId(_isDirected, edgeIndex.v, edgeIndex.w, edgeIndex.name));
         }
 
         internal DagreGraph RemoveEdge(string v, string w, string name = null)
@@ -303,6 +313,48 @@ namespace Dagre
         {
             return _successors.TryGetValue(v, out var sucs) ? sucs.Keys : null;
         }
+
+        /// <summary>
+        /// Returns the first successor without allocating an array.
+        /// </summary>
+        internal string FirstSuccessor(string v)
+        {
+            if (_successors.TryGetValue(v, out var sucs))
+            {
+                foreach (var key in sucs.Keys)
+                    return key;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns the first predecessor without allocating an array.
+        /// </summary>
+        internal string FirstPredecessor(string v)
+        {
+            if (_predecessors.TryGetValue(v, out var preds))
+            {
+                foreach (var key in preds.Keys)
+                    return key;
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Returns predecessor count without allocating.
+        /// </summary>
+        internal int PredecessorCount(string v)
+        {
+            return _predecessors.TryGetValue(v, out var preds) ? preds.Count : 0;
+        }
+
+        /// <summary>
+        /// Returns successor count without allocating.
+        /// </summary>
+        internal int SuccessorCount(string v)
+        {
+            return _successors.TryGetValue(v, out var sucs) ? sucs.Count : 0;
+        }
         internal string[] Children(string v = null)
         {
             v ??= GRAPH_NODE;
@@ -377,7 +429,7 @@ namespace Dagre
 
         internal EdgeLabel EdgeRaw(DagreEdgeIndex e)
         {
-            var key = EdgeArgsToId(_isDirected, e.v, e.w, e.name);
+            var key = e._key ?? EdgeArgsToId(_isDirected, e.v, e.w, e.name);
             return _edgeLabels.TryGetValue(key, out var value) ? value : null;
         }
         internal DagreGraph RemoveNode(string v)
@@ -453,6 +505,30 @@ namespace Dagre
                 return filtered;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Returns in-edge values without allocating an array. For internal hot-path iteration.
+        /// </summary>
+        internal Dictionary<string, DagreEdgeIndex>.ValueCollection InEdgeValues(string v)
+        {
+            return _in.TryGetValue(v, out var inDict) && inDict.Count > 0 ? inDict.Values : null;
+        }
+
+        /// <summary>
+        /// Returns out-edge values without allocating an array. For internal hot-path iteration.
+        /// </summary>
+        internal Dictionary<string, DagreEdgeIndex>.ValueCollection OutEdgeValues(string v)
+        {
+            return _out.TryGetValue(v, out var outDict) && outDict.Count > 0 ? outDict.Values : null;
+        }
+
+        /// <summary>
+        /// Returns in-edge count without allocating.
+        /// </summary>
+        internal int InEdgeCount(string v)
+        {
+            return _in.TryGetValue(v, out var inDict) ? inDict.Count : 0;
         }
 
             public Func<string, NodeLabel> _defaultNodeLabelFn = (t) => new NodeLabel();
@@ -562,6 +638,8 @@ namespace Dagre
         public string v;
         public string w;
         public string name;
+        /// <summary>Cached edge key to avoid repeated string concatenation on lookups.</summary>
+        internal string _key;
     }
 
     public class DagreException : Exception

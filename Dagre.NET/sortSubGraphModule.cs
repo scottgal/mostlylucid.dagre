@@ -36,8 +36,8 @@ namespace Dagre
             for (int i = 0; i < movable.Length; i++)
             {
                 var v = movable[i];
-                var inV = g.InEdges(v);
-                if (inV.Length == 0)
+                var inVals = g.InEdgeValues(v);
+                if (inVals == null)
                 {
                     result[i] = new OrderEntry { V = v };
                 }
@@ -45,7 +45,7 @@ namespace Dagre
                 {
                     float sum = 0;
                     float weight = 0;
-                    foreach (var e in inV)
+                    foreach (var e in inVals)
                     {
                         var edge = g.Edge(e);
                         var nodeU = g.Node(e.v);
@@ -147,10 +147,10 @@ namespace Dagre
                 newVs.AddRange(result.Vs);
                 newVs.Add(br);
                 result.Vs = newVs;
-                if (g.Predecessors(bl).Length != 0)
+                if (g.PredecessorCount(bl) != 0)
                 {
-                    var blPred = g.Node(g.Predecessors(bl)[0]);
-                    var brPred = g.Node(g.Predecessors(br)[0]);
+                    var blPred = g.Node(g.FirstPredecessor(bl));
+                    var brPred = g.Node(g.FirstPredecessor(br));
                     if (!result.Barycenter.HasValue)
                     {
                         result.Barycenter = 0;

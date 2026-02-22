@@ -9,10 +9,10 @@ namespace Dagre
         public static void addBorderNode(DagreGraph g, string prop, string prefix, string sg, NodeLabel sgNode, int rank)
         {
             var label = new NodeLabel();
-            label["width"] = 0f;
-            label["height"] = 0f;
-            label["rank"] = rank;
-            label["borderType"] = prop;
+            label.Width = 0f;
+            label.Height = 0f;
+            label.Rank = rank;
+            label.BorderType = prop;
 
             string prev = null;
             var borderMap = prop == "borderLeft" ? sgNode.BorderLeft : sgNode.BorderRight;
@@ -26,7 +26,7 @@ namespace Dagre
             if (prev != null)
             {
                 var edgeLabel = new EdgeLabel();
-                edgeLabel["weight"] = 1;
+                edgeLabel.Weight = 1;
                 g.SetEdge(prev, curr, edgeLabel);
             }
         }

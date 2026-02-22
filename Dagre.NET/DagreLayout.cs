@@ -93,8 +93,8 @@ namespace Dagre
                     var wNode = g.NodeRaw(e.w);
 
                     var label = new NodeLabel();
-                    label["rank"] = (wNode.Rank - vNode.Rank) / 2 + vNode.Rank;
-                    label["e"] = e;
+                    label.Rank = (wNode.Rank - vNode.Rank) / 2 + vNode.Rank;
+                    label.E = e;
                     Util.addDummyNode(g, "edge-proxy", label, "_ep");
                 }
             }
@@ -474,12 +474,12 @@ namespace Dagre
                         {
                             var selfLabel = (EdgeLabel)selfEdge.label;
                             var attrs = new NodeLabel();
-                            attrs["width"] = selfLabel.Width;
-                            attrs["height"] = selfLabel.Height;
-                            attrs["rank"] = node.Rank;
-                            attrs["order"] = i + (++orderShift);
-                            attrs["e"] = selfEdge.e;
-                            attrs["label"] = selfLabel;
+                            attrs.Width = selfLabel.Width;
+                            attrs.Height = selfLabel.Height;
+                            attrs.Rank = node.Rank;
+                            attrs.Order = i + (++orderShift);
+                            attrs.E = selfEdge.e;
+                            attrs.Label = selfLabel;
                             Util.addDummyNode(g, "selfedge", attrs, "_se");
                         }
                         node.Remove("selfEdges");

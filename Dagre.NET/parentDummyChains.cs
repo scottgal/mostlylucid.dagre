@@ -51,7 +51,7 @@ namespace Dagre
                     pathV = path[pathIdx];
                 }
                 g.SetParent(v, pathV);
-                v = g.Successors(v)[0];
+                v = g.FirstSuccessor(v);
             }
         }
         public static void _parentDummyChains(DagreGraph g)

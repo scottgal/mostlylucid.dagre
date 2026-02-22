@@ -55,7 +55,7 @@ namespace Dagre
                     g.SetEdge(edgeObj.v, edgeObj.w, origLabel, edgeObj.name);
                     while (node.Dummy != null)
                     {
-                        w = g.Successors(v)[0];
+                        w = g.FirstSuccessor(v);
                         g.RemoveNode(v);
                         if (origLabel.Points == null)
                         {
@@ -91,14 +91,15 @@ namespace Dagre
                 g.RemoveEdge(e);
                 object dummy = null;
                 ++vRank;
+                var edgeWeight = edgeLabel.Weight;
                 for (int i = 0; vRank < wRank; ++i, ++vRank)
                 {
                     var attrs = new NodeLabel();
-                    attrs["width"] = 0f;
-                    attrs["height"] = 0f;
+                    attrs.Width = 0f;
+                    attrs.Height = 0f;
                     attrs.EdgeLabel = edgeLabel;
                     attrs.EdgeObj = e;
-                    attrs["rank"] = vRank;
+                    attrs.Rank = vRank;
                     dummy = Util.addDummyNode(g, "edge", attrs, "_d");
                     if (labelRank != 0 && vRank == labelRank)
                     {
@@ -108,7 +109,7 @@ namespace Dagre
                         attrs.LabelPos = edgeLabel.LabelPos;
                     }
                     var jo1 = new EdgeLabel();
-                    jo1["weight"] = edgeLabel.Weight;
+                    jo1.Weight = edgeWeight;
 
                     g.SetEdge((string)v, (string)dummy, jo1, name);
                     if (i == 0)
@@ -118,7 +119,7 @@ namespace Dagre
                     v = dummy;
                 }
                 var jo2 = new EdgeLabel();
-                jo2["weight"] = edgeLabel.Weight;
+                jo2.Weight = edgeWeight;
 
                 g.SetEdge((string)v, w, jo2, name);
             }

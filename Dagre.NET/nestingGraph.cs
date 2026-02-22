@@ -86,8 +86,8 @@ namespace Dagre
         static NodeLabel generateEmptyWidHei()
         {
             var ret = new NodeLabel();
-            ret["width"] = 0f;
-            ret["height"] = 0f;
+            ret.Width = 0f;
+            ret.Height = 0f;
             return ret;
         }
         public static void dfs(DagreGraph g, string root, int nodeSep, int weight, int height, Dictionary<string, int> depths, string v)
@@ -98,10 +98,9 @@ namespace Dagre
                 if (v != root)
                 {
                     var arg = new EdgeLabel();
-                    arg["weight"] = 0;
-                    arg["minlen"] = nodeSep;
+                    arg.Weight = 0;
+                    arg.Minlen = nodeSep;
                     g.SetEdge(root, v, arg);
-                    //g.SetEdge(root, v, { weight: 0, minlen: nodeSep });
                 }
                 return;
             }
@@ -125,21 +124,21 @@ namespace Dagre
                 var thisWeight = childNode.BorderTop != null ? weight : 2 * weight;
                 var minlen = childTop != childBottom ? 1 : height - depths[v] + 1;
                 var j1 = new EdgeLabel();
-                j1["weight"] = thisWeight;
-                j1["minlen"] = minlen;
+                j1.Weight = thisWeight;
+                j1.Minlen = minlen;
                 j1.NestingEdge = true;
                 g.SetEdge(top, childTop, j1);
                 var j2 = new EdgeLabel();
-                j2["weight"] = thisWeight;
-                j2["minlen"] = minlen;
+                j2.Weight = thisWeight;
+                j2.Minlen = minlen;
                 j2.NestingEdge = true;
                 g.SetEdge(childBottom, bottom, j2);
             }
             if (g.Parent(v) == null)
             {
                 var j2 = new EdgeLabel();
-                j2["weight"] = 0;
-                j2["minlen"] = height + depths[v];
+                j2.Weight = 0;
+                j2.Minlen = height + depths[v];
                 g.SetEdge(root, top, j2);
             }
         }

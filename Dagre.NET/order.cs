@@ -214,27 +214,18 @@ namespace Dagre
                     var parent = g.Parent(v);
                     graph.SetParent(v, parent ?? root);
                     // This assumes we have only short edges!
-                    DagreEdgeIndex[] rr = null;
-                    if (relationship == "inEdges")
-                    {
-                        rr = g.InEdges(v);
-                    }
-                    else if (relationship == "outEdges")
-                    {
-                        rr = g.OutEdges(v);
-                    }
-                    else
-                    {
-                        throw new DagreException();
-                    }
-                    foreach (var e in rr)
+                    var edgeVals = relationship == "inEdges" ? g.InEdgeValues(v) :
+                                   relationship == "outEdges" ? g.OutEdgeValues(v) :
+                                   throw new DagreException();
+                    if (edgeVals != null)
+                    foreach (var e in edgeVals)
                     {
                         var u = e.v == v ? e.w : e.v;
                         var existingEdge = graph.EdgeRaw(u, v) as EdgeLabel;
                         var weight = existingEdge != null ? existingEdge.Weight : 0;
                         var edgeLabel = g.Edge(e);
                         var j = new EdgeLabel();
-                        j["weight"] = edgeLabel.Weight + weight;
+                        j.Weight = edgeLabel.Weight + weight;
                         graph.SetEdge(u, v, j);
                     }
                     if (rtag.MinRank != null)
@@ -403,9 +394,10 @@ namespace Dagre
             var entries = new List<CrossEntry>();
             foreach (var v in northLayer)
             {
-                var outEdges = g.OutEdges(v);
+                var outVals = g.OutEdgeValues(v);
+                if (outVals == null) continue;
                 entries.Clear();
-                foreach (var e in outEdges)
+                foreach (var e in outVals)
                 {
                     if (southPos.TryGetValue(e.w, out var pos))
                     {

@@ -6,7 +6,7 @@
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <NoWarn>CA1822;CA1805;CS1591</NoWarn>
-    <PackageId>MostlyLucid.Dagre</PackageId>
+    <PackageId>Mostlylucid.Dagre</PackageId>
     <Company>mostlylucid</Company>
     <Description>Modern, high-performance C# graph layout engine using the Sugiyama (layered) algorithm. Zero dynamic, zero boxing, AOT-compatible. Modernized fork of Dagre.NET (dagre.js port).</Description>
     <Authors>scottgal</Authors>

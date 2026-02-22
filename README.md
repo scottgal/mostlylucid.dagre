@@ -1,11 +1,11 @@
-# MostlyLucid.Dagre
+# Mostlylucid.Dagre
 
-[![NuGet](https://img.shields.io/nuget/v/MostlyLucid.Dagre.svg)](https://www.nuget.org/packages/MostlyLucid.Dagre/)
+[![NuGet](https://img.shields.io/nuget/v/Mostlylucid.Dagre.svg)](https://www.nuget.org/packages/Mostlylucid.Dagre/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A modern, high-performance C# graph layout engine implementing the Sugiyama (layered) algorithm. This is an extensively modernized fork of [Dagre.NET](https://github.com/nicknash/dagre.NET) (itself a port of [dagre.js](https://github.com/dagrejs/dagre)).
 
-> **Why fork?** The original Dagre.NET was a faithful line-by-line port of dagre.js, inheriting JavaScript idioms like `dynamic` property bags and `object[]` arrays. This made it slow, allocation-heavy, and incompatible with modern .NET features like NativeAOT and WebAssembly. MostlyLucid.Dagre rewrites the internals for idiomatic, high-performance .NET while preserving the same Sugiyama layout algorithm.
+> **Why fork?** The original Dagre.NET was a faithful line-by-line port of dagre.js, inheriting JavaScript idioms like `dynamic` property bags and `object[]` arrays. This made it slow, allocation-heavy, and incompatible with modern .NET features like NativeAOT and WebAssembly. Mostlylucid.Dagre rewrites the internals for idiomatic, high-performance .NET while preserving the same Sugiyama layout algorithm.
 
 ## Features
 
@@ -20,7 +20,7 @@ A modern, high-performance C# graph layout engine implementing the Sugiyama (lay
 ## Install
 
 ```
-dotnet add package MostlyLucid.Dagre
+dotnet add package Mostlylucid.Dagre
 ```
 
 ## Usage
@@ -108,7 +108,7 @@ DagreLayout.runLayout(g);
 
 Compared to the original [Dagre.NET 1.0.0.6](https://www.nuget.org/packages/Dagre.NET/) NuGet package, using identical graph construction with BenchmarkDotNet on .NET 10:
 
-| Graph Size | Original Dagre.NET | MostlyLucid.Dagre | Speedup | Memory Reduction |
+| Graph Size | Original Dagre.NET | Mostlylucid.Dagre | Speedup | Memory Reduction |
 |------------|----------|-----------|---------|-----------------|
 | 5 nodes, 8 edges | 1.2 ms / 3.2 MB | 0.3 ms / 0.7 MB | **4x** | **4.6x** |
 | 20 nodes, 30 edges | 14.8 ms / 24 MB | 1.8 ms / 4.0 MB | **8x** | **6x** |

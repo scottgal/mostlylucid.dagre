@@ -10,13 +10,19 @@
     <Company>mostlylucid</Company>
     <Description>Modern, high-performance C# graph layout engine using the Sugiyama (layered) algorithm. Zero dynamic, zero boxing, AOT-compatible. Modernized fork of Dagre.NET (dagre.js port).</Description>
     <Authors>scottgal</Authors>
-    <RepositoryUrl>https://github.com/scottgal/markdown.viewer</RepositoryUrl>
-    <PackageProjectUrl>https://github.com/scottgal/markdown.viewer</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/scottgal/mostlylucid.dagre</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/scottgal/mostlylucid.dagre</PackageProjectUrl>
     <PackageTags>dagre;graph;layout;visualization;sugiyama;directed-graph;aot</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <Version>2.0.0</Version>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <!-- Release configuration: no PDB files -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1,0 +1,53 @@
+name: Publish MostlyLucid.Dagre
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Package version (e.g. 2.0.0, 2.1.0-beta.1)'
+        required: true
+        type: string
+      push_to_nuget:
+        description: 'Push to nuget.org (uncheck for dry run)'
+        required: false
+        type: boolean
+        default: true
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  PROJECT_PATH: 'Dagre.NET/Dagre.NET.csproj'
+
+jobs:
+  pack-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore
+      run: dotnet restore ${{ env.PROJECT_PATH }}
+
+    - name: Build
+      run: dotnet build ${{ env.PROJECT_PATH }} -c Release --no-restore -p:Version=${{ inputs.version }}
+
+    - name: Pack
+      run: dotnet pack ${{ env.PROJECT_PATH }} -c Release --no-build -p:Version=${{ inputs.version }} -o ./nupkg
+
+    - name: List package
+      run: ls -la ./nupkg/
+
+    - name: Push to NuGet
+      if: ${{ inputs.push_to_nuget }}
+      run: dotnet nuget push ./nupkg/*.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nupkg-${{ inputs.version }}
+        path: ./nupkg/*.nupkg

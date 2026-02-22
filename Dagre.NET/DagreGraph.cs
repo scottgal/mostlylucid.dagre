@@ -181,6 +181,15 @@ namespace Dagre
             return null;
         }
 
+        /// <summary>
+        /// Returns predecessor keys without allocating a new array.
+        /// For internal hot-path iteration only.
+        /// </summary>
+        internal Dictionary<string, int>.KeyCollection PredecessorKeys(string v)
+        {
+            return _predecessors.TryGetValue(v, out var preds) ? preds.Keys : null;
+        }
+
         public Dictionary<string, EdgeLabel> _edgeLabels = new Dictionary<string, EdgeLabel>(StringComparer.Ordinal);
         public DagreEdgeIndex[] Edges()
         {
@@ -285,6 +294,15 @@ namespace Dagre
             }
             return null;
         }
+
+        /// <summary>
+        /// Returns successor keys without allocating a new array.
+        /// For internal hot-path iteration only.
+        /// </summary>
+        internal Dictionary<string, int>.KeyCollection SuccessorKeys(string v)
+        {
+            return _successors.TryGetValue(v, out var sucs) ? sucs.Keys : null;
+        }
         internal string[] Children(string v = null)
         {
             v ??= GRAPH_NODE;
@@ -304,6 +322,18 @@ namespace Dagre
                 return Array.Empty<string>();
             }
             return Array.Empty<string>();
+        }
+
+        /// <summary>
+        /// Checks if a node has children without allocating an array.
+        /// </summary>
+        internal bool HasChildren(string v)
+        {
+            if (_isCompound)
+            {
+                return _children.TryGetValue(v, out var children) && children.Count > 0;
+            }
+            return false;
         }
 
 

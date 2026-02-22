@@ -334,12 +334,13 @@ namespace Dagre
                     float delta = horiz == "l" ? alignToMin - xsMin : alignToMax - xsMax;
                     if (delta != 0)
                     {
-                        var adjusted = new Dictionary<string, float>(StringComparer.Ordinal);
-                        foreach (var kvp in xs)
+                        // Update in place to avoid allocating a new dictionary
+                        var keys = new string[xs.Count];
+                        xs.Keys.CopyTo(keys, 0);
+                        foreach (var key in keys)
                         {
-                            adjusted[kvp.Key] = kvp.Value + delta;
+                            xs[key] += delta;
                         }
-                        xss[alignment] = adjusted;
                     }
                 }
             }
@@ -468,7 +469,7 @@ namespace Dagre
         {
             if ((g.NodeRaw(v)).Dummy != null)
             {
-                var preds = g.Predecessors(v);
+                var preds = g.PredecessorKeys(v);
                 if (preds != null)
                 {
                     foreach (var u in preds)
@@ -527,7 +528,7 @@ namespace Dagre
                             for (int si = scanPos; si < end; si++)
                             {
                                 var scanNode = layer[si];
-                                foreach (var u in g.Predecessors(scanNode))
+                                foreach (var u in g.PredecessorKeys(scanNode) ?? (IEnumerable<string>)Array.Empty<string>())
                                 {
                                     var uLabel = g.Node(u);
                                     var uPos = uLabel.Order;
@@ -582,7 +583,7 @@ namespace Dagre
                                     var sv = south[si];
                                     if ((g.Node(sv)).Dummy != null)
                                     {
-                                        foreach (var u in g.Predecessors(sv))
+                                        foreach (var u in g.PredecessorKeys(sv) ?? (IEnumerable<string>)Array.Empty<string>())
                                         {
                                             var uNode = g.Node(u);
                                             if (uNode.Dummy != null && (uNode.Order < prevNorthPos || uNode.Order > nextNorthPos))
@@ -603,7 +604,7 @@ namespace Dagre
                         var sv = south[si];
                         if ((g.Node(sv)).Dummy != null)
                         {
-                            foreach (var u in g.Predecessors(sv))
+                            foreach (var u in g.PredecessorKeys(sv) ?? (IEnumerable<string>)Array.Empty<string>())
                             {
                                 var uNode = g.Node(u);
                                 if (uNode.Dummy != null && (uNode.Order < prevNorthPos || uNode.Order > prev.Length))

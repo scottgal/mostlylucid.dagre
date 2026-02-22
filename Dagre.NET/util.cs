@@ -44,7 +44,7 @@ namespace Dagre
             graph.SetGraph(g.Graph());
             foreach (var v in g.NodesRaw())
             {
-                if (g.Children(v).Length == 0)
+                if (!g.HasChildren(v))
                 {
                     graph.SetNode(v, g.NodeRaw(v));
                 }
@@ -60,7 +60,12 @@ namespace Dagre
 
         public static int[] range(int start, int end)
         {
-            return Enumerable.Range(start, end - start).ToArray();
+            var count = end - start;
+            if (count <= 0) return Array.Empty<int>();
+            var result = new int[count];
+            for (var i = 0; i < count; i++)
+                result[i] = start + i;
+            return result;
         }
         public static string uniqueId(string str)
         {

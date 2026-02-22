@@ -110,7 +110,7 @@ namespace Dagre
             var barycenters = barycenter(g, movable);
             foreach (var entry in barycenters)
             {
-                if (g.Children(entry.V).Length != 0)
+                if (g.HasChildren(entry.V))
                 {
                     var subgraphResult = sortSubraph(g, entry.V, cg, biasRight);
                     subgraphs[entry.V] = subgraphResult;

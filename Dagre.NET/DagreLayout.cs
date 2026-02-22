@@ -430,7 +430,7 @@ namespace Dagre
         {
             foreach (var v in g.Nodes())
             {
-                if (g.Children(v).Length > 0)
+                if (g.HasChildren(v))
                 {
                     var node = g.Node(v);
                     var t = g.Node(node.BorderTop);

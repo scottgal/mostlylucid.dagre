@@ -271,10 +271,10 @@ namespace Dagre
             if (rank >= 0 && rank < layers.Count)
                 layers[rank].Add(v);
 
-            var successors = g.Successors(v);
-            if (successors != null)
+            var successorKeys = g.SuccessorKeys(v);
+            if (successorKeys != null)
             {
-                foreach (var item in successors)
+                foreach (var item in successorKeys)
                 {
                     initOrderDfs(g, layers, visited, item);
                 }
@@ -300,7 +300,7 @@ namespace Dagre
             var nodes = new List<string>(allNodes.Length);
             foreach (var v in allNodes)
             {
-                if (g.Children(v).Length == 0) nodes.Add(v);
+                if (!g.HasChildren(v)) nodes.Add(v);
             }
             // Compute maxRank from ALL nodes (not just leaves) because
             // initOrderDfs traverses successors which may include non-leaf nodes
@@ -400,10 +400,11 @@ namespace Dagre
             }
 
             var southEntries = new List<CrossEntry>();
+            var entries = new List<CrossEntry>();
             foreach (var v in northLayer)
             {
                 var outEdges = g.OutEdges(v);
-                var entries = new List<CrossEntry>();
+                entries.Clear();
                 foreach (var e in outEdges)
                 {
                     if (southPos.TryGetValue(e.w, out var pos))

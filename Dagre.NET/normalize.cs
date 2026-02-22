@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace Dagre
 {
-    public class normalize
+    public class Normalize
     {
 
         /*
@@ -24,8 +24,8 @@ namespace Dagre
          */
         public static void run(DagreGraph g)
         {
-            g.graph()["dummyChains"] = new List<string>();
-            foreach (var edge in g.edgesRaw())
+            g.Graph().DummyChains = new List<string>();
+            foreach (var edge in g.EdgesRaw())
             {
                 normalizeEdge(g, edge);
             }
@@ -36,113 +36,91 @@ namespace Dagre
          */
         public static void undo(DagreGraph g, Action<float> progress = null)
         {
-            var gg = g.graph();
-            if (gg.ContainsKey("dummyChains"))
+            var gg = g.Graph();
+            if (gg.DummyChains != null)
             {
-                dynamic list = gg["dummyChains"];
+                var list = gg.DummyChains;
                 int i = 0;
-                int count = 0;
-                if (list is Array)
-                {
-                    count = list.Length;
-                }
-                else { count = list.Count; }
-                foreach (var vv in list)
+                int count = list.Count;
+                foreach (var chainStart in list)
                 {
                     var perc = (float)i / count;
                     progress?.Invoke(perc);
                     i++;
-                    var v = vv;
-                    var node = g.node(v);
-                    var origLabel = node["edgeLabel"];
+                    var v = chainStart;
+                    var node = g.Node(v);
+                    var origLabel = (EdgeLabel)node.EdgeLabel;
                     string w = null;
-                    g.setEdge(new object[] { node["edgeObj"], origLabel });
-                    while (node.ContainsKey("dummy") && node["dummy"] != null)
+                    var edgeObj = (DagreEdgeIndex)node.EdgeObj;
+                    g.SetEdge(edgeObj.v, edgeObj.w, origLabel, edgeObj.name);
+                    while (node.Dummy != null)
                     {
-                        w = g.successors(v)[0];
-                        g.removeNode(v);
-                        if (!origLabel.ContainsKey("points"))
+                        w = g.Successors(v)[0];
+                        g.RemoveNode(v);
+                        if (origLabel.Points == null)
                         {
-                            origLabel["points"] = new List<object>();
+                            origLabel.Points = new List<DagrePoint>();
                         }
-                        if (origLabel["points"] is Array ar1)
+                        origLabel.Points.Add(new DagrePoint(node.X, node.Y));
+                        if (node.Dummy == "edge-label")
                         {
-                            List<object> temp1 = new List<object>();
-                            foreach (var item in ar1)
-                            {
-                                temp1.Add(item);
-                            }
-                            origLabel["points"] = temp1;
-                        }
-                        origLabel["points"].Add(DagreLayout.makePoint(node["x"], node["y"]));
-                        if (node["dummy"] == "edge-label")
-                        {
-                            origLabel["x"] = node["x"];
-                            origLabel["y"] = node["y"];
-                            origLabel["width"] = node["width"];
-                            origLabel["height"] = node["height"];
+                            origLabel.X = node.X;
+                            origLabel.Y = node.Y;
+                            origLabel.Width = node.Width;
+                            origLabel.Height = node.Height;
                         }
                         v = w;
-                        node = g.node(v);
+                        node = g.Node(v);
                     }
                 }
             }
 
         }
 
-        public static void normalizeEdge(DagreGraph g, dynamic e)
+        public static void normalizeEdge(DagreGraph g, DagreEdgeIndex e)
         {
-            var v = e["v"];
-            var vRank = (int)g.nodeRaw(v)["rank"];
-            var w = e["w"];
-            var wRank = (int)(g.nodeRaw(w)["rank"]);
-            string name = null;
-            if (e.ContainsKey("name"))
-                name = (string)e["name"];
-            var edgeLabel = g.edgeRaw(e);
-            object labelRank = null;
-            if (edgeLabel.ContainsKey("labelRank"))
-                labelRank = edgeLabel["labelRank"];
+            var v = (object)e.v;
+            var vRank = (g.NodeRaw(e.v)).Rank;
+            var w = e.w;
+            var wRank = (g.NodeRaw(w)).Rank;
+            string name = e.name;
+            var edgeLabel = g.EdgeRaw(e);
+            var labelRank = edgeLabel.LabelRank;
             if (wRank != vRank + 1)
             {
-                g.removeEdge(e);
+                g.RemoveEdge(e);
                 object dummy = null;
-                //    let attrs;
                 ++vRank;
                 for (int i = 0; vRank < wRank; ++i, ++vRank)
                 {
-                    //        edgeLabel.points = [];
-
-                    JavaScriptLikeObject attrs = new JavaScriptLikeObject();
-
-
-                    attrs.Add("width", 0);
-                    attrs.Add("height", 0);
-                    attrs.Add("edgeLabel", edgeLabel);
-                    attrs.Add("edgeObj", e);
-                    attrs.Add("rank", vRank);
-                    dummy = util.addDummyNode(g, "edge", attrs, "_d");
-                    if (labelRank != null && vRank == (int)labelRank)
+                    var attrs = new NodeLabel();
+                    attrs["width"] = 0f;
+                    attrs["height"] = 0f;
+                    attrs.EdgeLabel = edgeLabel;
+                    attrs.EdgeObj = e;
+                    attrs["rank"] = vRank;
+                    dummy = Util.addDummyNode(g, "edge", attrs, "_d");
+                    if (labelRank != 0 && vRank == labelRank)
                     {
-                        attrs["width"] = edgeLabel["width"];
-                        attrs["height"] = edgeLabel["height"];
-                        attrs["dummy"] = "edge-label";
-                        attrs["labelpos"] = edgeLabel["labelpos"];
+                        attrs.Width = edgeLabel.Width;
+                        attrs.Height = edgeLabel.Height;
+                        attrs.Dummy = "edge-label";
+                        attrs.LabelPos = edgeLabel.LabelPos;
                     }
-                    JavaScriptLikeObject jo1 = new JavaScriptLikeObject();
-                    jo1.Add("weight", edgeLabel["weight"]);
+                    var jo1 = new EdgeLabel();
+                    jo1["weight"] = edgeLabel.Weight;
 
-                    g.setEdge(new object[] { v, (string)dummy, jo1, name });
+                    g.SetEdge((string)v, (string)dummy, jo1, name);
                     if (i == 0)
                     {
-                        g.graph()["dummyChains"].Add((string)dummy);
+                        g.Graph().DummyChains.Add((string)dummy);
                     }
                     v = dummy;
                 }
-                JavaScriptLikeObject jo2 = new JavaScriptLikeObject();
-                jo2.Add("weight", edgeLabel["weight"]);
+                var jo2 = new EdgeLabel();
+                jo2["weight"] = edgeLabel.Weight;
 
-                g.setEdge(new object[] { v, w, jo2, name });
+                g.SetEdge((string)v, w, jo2, name);
             }
         }
     }

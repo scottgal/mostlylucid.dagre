@@ -7,63 +7,58 @@ using System.Threading.Tasks;
 namespace Dagre
 {
 
-    public class acyclic
+    public class Acyclic
     {
 
         public static void undo(DagreGraph g)
         {
-            foreach (dynamic e in g.edges())
+            foreach (var e in g.Edges())
             {
-                var label = g.edge(e);
-                if (label.ContainsKey("reversed"))
+                var label = g.Edge(e);
+                if (label.Reversed)
                 {
-                    g.removeEdge(e);
+                    g.RemoveEdge(e);
 
-                    var forwardName = label["forwardName"];
-                    label["reversed"] = null;
-                    label["forwardName"] = null;
+                    var forwardName = label.ForwardName;
+                    label.Reversed = false;
+                    label.ForwardName = null;
 
-
-                    g.setEdge(new object[] { e["w"], e["v"], label, forwardName });
+                    g.SetEdge(e.w, e.v, label, forwardName);
                 }
             }
 
         }
 
-        public static Func<string, int> weightFn(DagreGraph g)
+        public static Func<DagreEdgeIndex, int> weightFn(DagreGraph g)
         {
-            return (Func<string, int>)((e) => { return g.edge(e)["weight"]; });
+            return (e) => g.Edge(e).Weight;
         }
         public static void run(DagreGraph g)
         {
-            string cyclicer = "";
-            if (g.graph().ContainsKey("acyclicer"))
-            {
-                cyclicer = g.graph()["acyclicer"];
-            }
+            var cyclicer = g.Graph().Acyclicer ?? "";
             var fas = (cyclicer == "greedy"
    ? greedyFAS(g, weightFn(g))
    : dfsFAS(g));
-            foreach (dynamic e in fas)
+            foreach (var e in fas)
             {
-                var label = g.edge(e);
-                g.removeEdge(e);
-                label["forwardName"] = e["name"];
-                label["reversed"] = true;
+                var label = g.Edge(e);
+                g.RemoveEdge(e);
+                label.ForwardName = e.name;
+                label.Reversed = true;
 
-                g.setEdge(new object[] { e["w"], e["v"], label, util.uniqueId("rev") });
+                g.SetEdge(e.w, e.v, label, Util.uniqueId("rev"));
 
             }
         }
 
-        public static DagreEdgeIndex[] greedyFAS(DagreGraph g, Func<string, int> wf)
+        public static DagreEdgeIndex[] greedyFAS(DagreGraph g, Func<DagreEdgeIndex, int> wf)
         {
             throw new NotImplementedException();
         }
-        public static object[] dfsFAS(DagreGraph g)
+        public static DagreEdgeIndex[] dfsFAS(DagreGraph g)
         {
             HashSet<string> visited = new HashSet<string>();
-            List<object> fas = new List<object>();
+            List<DagreEdgeIndex> fas = new List<DagreEdgeIndex>();
             HashSet<string> stack = new HashSet<string>();
             Action<string> dfs = null;
             dfs = (v) =>
@@ -74,21 +69,21 @@ namespace Dagre
                 }
                 visited.Add(v);
                 stack.Add(v);
-                foreach (dynamic e in g.outEdges(v))
+                foreach (var e in g.OutEdges(v))
                 {
-                    if (stack.Contains(e["w"]))
+                    if (stack.Contains(e.w))
                     {
                         fas.Add(e);
                     }
                     else
                     {
-                        dfs(e["w"]);
+                        dfs(e.w);
                     }
                 }
                 stack.Remove(v);
 
             };
-            foreach (var item in g.nodesRaw())
+            foreach (var item in g.NodesRaw())
             {
                 dfs(item);
             }

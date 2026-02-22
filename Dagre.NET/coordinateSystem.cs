@@ -1,10 +1,13 @@
-﻿namespace Dagre
+using System;
+using System.Collections.Generic;
+
+namespace Dagre
 {
-    public class coordinateSystem
+    public class CoordinateSystem
     {
         public static void undo(DagreGraph g)
         {
-            var rankDir = g.graph()["rankdir"].ToLower();
+            var rankDir = g.Graph().RankDir.ToLower();
             if (rankDir == "bt" || rankDir == "rl")
             {
                 reverseY(g);
@@ -16,93 +19,89 @@
                 swapWidthHeight(g);
             }
         }
-        public static void reverseYOne(dynamic attrs)
-        {
-            attrs["y"] = -attrs["y"];
-        }
 
         public static void reverseY(DagreGraph g)
         {
-            foreach (var v in g.nodes())
+            foreach (var v in g.Nodes())
             {
-                reverseYOne(g.node(v));
+                var node = g.Node(v);
+                node.Y = -node.Y;
             }
-            foreach (var e in g.edges())
+            foreach (var e in g.Edges())
             {
-                var edge = g.edge(e);
-                foreach (var item in edge["points"])
+                var edge = g.Edge(e);
+                if (edge.Points != null)
                 {
-                    reverseYOne(item);
+                    for (int pi = 0; pi < edge.Points.Count; pi++)
+                    {
+                        var p = edge.Points[pi];
+                        edge.Points[pi] = new DagrePoint(p.X, -p.Y);
+                    }
                 }
 
-                if (edge.y != null)
+                if (edge.ContainsKey("y"))
                 {
-                    reverseYOne(edge);
+                    edge.Y = -edge.Y;
                 }
             }
-        }
-
-        public static void swapXYOne(dynamic attrs)
-        {
-            var x = attrs["x"];
-            attrs["x"] = attrs["y"];
-            attrs["y"] = x;
         }
 
         public static void swapXY(DagreGraph g)
         {
-            foreach (var v in g.nodes())
+            foreach (var v in g.Nodes())
             {
-                swapXYOne(g.node(v));
+                var node = g.Node(v);
+                var x = node.X;
+                node.X = node.Y;
+                node.Y = x;
             }
 
-            foreach (var e in g.edges())
+            foreach (var e in g.Edges())
             {
-                var edge = g.edge(e);
-                foreach (var item in edge["points"])
+                var edge = g.Edge(e);
+                if (edge.Points != null)
                 {
-                    swapXYOne(item);
+                    for (int pi = 0; pi < edge.Points.Count; pi++)
+                    {
+                        var p = edge.Points[pi];
+                        edge.Points[pi] = new DagrePoint(p.Y, p.X);
+                    }
                 }
 
                 if (edge.ContainsKey("x"))
                 {
-                    swapXYOne(edge);
+                    var x = edge.X;
+                    edge.X = edge.Y;
+                    edge.Y = x;
                 }
             }
-
-
         }
+
         public static void adjust(DagreGraph g)
         {
-            var rankDir = g.graph()["rankdir"].ToLower();
+            var rankDir = g.Graph().RankDir.ToLower();
             if (rankDir == "lr" || rankDir == "rl")
             {
                 swapWidthHeight(g);
             }
         }
 
-
-        public static void swapWidthHeightOne(dynamic attrs)
+        public static void swapWidthHeight(DagreGraph g)
         {
-            if (attrs.ContainsKey("width"))
+            foreach (var v in g.Nodes())
             {
-                var w = attrs["width"];
-                attrs["width"] = attrs["height"];
-                attrs["height"] = w;
+                var node = g.Node(v);
+                var w = node.Width;
+                node.Width = node.Height;
+                node.Height = w;
             }
-        }
-
-        public static void swapWidthHeight(dynamic g)
-        {
-            foreach (var v in g.nodes())
+            foreach (var e in g.Edges())
             {
-                swapWidthHeightOne(g.node(v));
+                var edge = g.Edge(e);
+                var w = edge.Width;
+                edge.Width = edge.Height;
+                edge.Height = w;
             }
-            foreach (var e in g.edges())
-            {
-                swapWidthHeightOne(g.edge(e));
-            }
-
         }
 
     }

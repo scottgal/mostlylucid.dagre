@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Dagre
 {
-    public class nestingGraph
+    public class NestingGraph
     {
 
         /*
@@ -32,29 +32,28 @@ namespace Dagre
          */
         public static void run(DagreGraph g)
         {
-            var root = util.addDummyNode(g, "root", new Dictionary<string, object>(), "_root");
+            var root = Util.addDummyNode(g, "root", new NodeLabel(), "_root");
             var depths = treeDepths(g);
             Dictionary<string, int> d = new Dictionary<string, int>();
 
-            var height = ((dynamic)depths.Values.Max(z => z)) - 1;// Note: depths is an Object not an array
+            var height = depths.Values.Max() - 1;// Note: depths is an Object not an array
             var nodeSep = 2 * height + 1;
 
-            g.graph()["nestingRoot"] = root;
+            g.Graph().NestingRoot = root;
 
 
             // Multiply minlen by nodeSep to align nodes on non-border ranks.
-            foreach (var e in g.edgesRaw())
+            foreach (var e in g.EdgesRaw())
             {
-                dynamic edge = g.edgeRaw(e);
-                edge["minlen"] = edge["minlen"] * nodeSep;
-
+                var edge = g.EdgeRaw(e);
+                edge.Minlen = edge.Minlen * nodeSep;
             }
 
             // Calculate a weight that is sufficient to keep subgraphs vertically compact
             var weight = sumWeights(g) + 1;
 
             // Create border nodes and link them up
-            foreach (var child in g.children())
+            foreach (var child in g.Children())
             {
                 dfs(g, root, nodeSep, weight, height, depths, child);
             }
@@ -62,107 +61,101 @@ namespace Dagre
 
             // Save the multiplier for node layers for later removal of empty border
             // layers.
-            g.graph()["nodeRankFactor"]= nodeSep;
+            g.Graph().NodeRankFactor = nodeSep;
         }
 
 
 
         public static void cleanup(DagreGraph g)
         {
-            var graphLabel = g.graph();
-            g.removeNode(graphLabel["nestingRoot"]);
-            graphLabel.Remove("nestingRoot");
+            var graphLabel = g.Graph();
+            g.RemoveNode(graphLabel.NestingRoot);
+            graphLabel.NestingRoot = null;
             
 
-            foreach (var e in g.edgesRaw())
+            foreach (var e in g.EdgesRaw())
             {
-                var edge = g.edgeRaw(e);
-                if (edge.ContainsKey("nestingEdge"))
+                var edge = g.EdgeRaw(e);
+                if (edge.NestingEdge)
                 {
-                    g.removeEdge(e);
+                    g.RemoveEdge(e);
                 }
             }
 
         }
-        static object generateEmptyWidHei()
+        static NodeLabel generateEmptyWidHei()
         {
-            JavaScriptLikeObject ret = new JavaScriptLikeObject();
-            ret.Add("width", 0);
-            ret.Add("height", 0);
+            var ret = new NodeLabel();
+            ret["width"] = 0f;
+            ret["height"] = 0f;
             return ret;
         }
-        public static void dfs(DagreGraph g, string root, int nodeSep, int weight, int height, dynamic depths, string v)
+        public static void dfs(DagreGraph g, string root, int nodeSep, int weight, int height, Dictionary<string, int> depths, string v)
         {
-            var children = g.children(v);
+            var children = g.Children(v);
             if (children == null || children.Length == 0)
             {
                 if (v != root)
                 {
-                    JavaScriptLikeObject arg = new JavaScriptLikeObject();
-                    arg.Add("weight", 0);
-                    arg.Add("minlen", nodeSep);
-                    g.setEdge(new object[] { root, v, arg });
-                    //g.setEdge(root, v, { weight: 0, minlen: nodeSep });
+                    var arg = new EdgeLabel();
+                    arg["weight"] = 0;
+                    arg["minlen"] = nodeSep;
+                    g.SetEdge(root, v, arg);
+                    //g.SetEdge(root, v, { weight: 0, minlen: nodeSep });
                 }
                 return;
             }
 
 
-            var top = util.addDummyNode(g, "border", generateEmptyWidHei(), "_bt");
-            var bottom = util.addDummyNode(g, "border", generateEmptyWidHei(), "_bb");
-            var label = g.nodeRaw(v);
-            g.setParent(top, v);
-            DagreGraph.addOrUpdate("borderTop", label, top);
-            
-            g.setParent(bottom, v);
-            DagreGraph.addOrUpdate("borderBottom", label, bottom);
+            var top = Util.addDummyNode(g, "border", generateEmptyWidHei(), "_bt");
+            var bottom = Util.addDummyNode(g, "border", generateEmptyWidHei(), "_bb");
+            var label = g.NodeRaw(v);
+            g.SetParent(top, v);
+            label.BorderTop = top;
+
+            g.SetParent(bottom, v);
+            label.BorderBottom = bottom;
 
             foreach (var child in children)
             {
                 dfs(g, root, nodeSep, weight, height, depths, child);
-                var childNode = g.node(child);
-                var childTop = childNode.ContainsKey("borderTop") ? childNode["borderTop"] : child;
-                var childBottom = childNode.ContainsKey("borderBottom") ? childNode["borderBottom"] : child;
-                var thisWeight = childNode.ContainsKey("borderTop") ? weight : 2 * weight;
+                var childNode = g.Node(child);
+                var childTop = childNode.BorderTop != null ? childNode.BorderTop : child;
+                var childBottom = childNode.BorderBottom != null ? childNode.BorderBottom : child;
+                var thisWeight = childNode.BorderTop != null ? weight : 2 * weight;
                 var minlen = childTop != childBottom ? 1 : height - depths[v] + 1;
-                JavaScriptLikeObject j1 = new JavaScriptLikeObject();
-                j1.Add("weight", thisWeight);
-                j1.Add("minlen", minlen);
-                j1.Add("nestingEdge", true);
-                g.setEdge(new object[] { top, childTop, j1 });
-                JavaScriptLikeObject j2 = new JavaScriptLikeObject();
-                j2.Add("weight", thisWeight);
-                j2.Add("minlen", minlen);
-                j2.Add("nestingEdge", true);
-                g.setEdge(new object[] { childBottom, bottom, j2 });
-                
+                var j1 = new EdgeLabel();
+                j1["weight"] = thisWeight;
+                j1["minlen"] = minlen;
+                j1.NestingEdge = true;
+                g.SetEdge(top, childTop, j1);
+                var j2 = new EdgeLabel();
+                j2["weight"] = thisWeight;
+                j2["minlen"] = minlen;
+                j2.NestingEdge = true;
+                g.SetEdge(childBottom, bottom, j2);
             }
-            if (g.parent(v) == null)
+            if (g.Parent(v) == null)
             {
-                JavaScriptLikeObject j2 = new JavaScriptLikeObject();
-                j2.Add("weight", 0);
-                j2.Add("minlen", height + depths[v]);                
-                g.setEdge(new object[] { root, top, j2 });
+                var j2 = new EdgeLabel();
+                j2["weight"] = 0;
+                j2["minlen"] = height + depths[v];
+                g.SetEdge(root, top, j2);
             }
         }
 
         public static int sumWeights(DagreGraph g)
         {
-            return g.edgesRaw().Sum(z =>
-            {
-                dynamic edge = g.edgeRaw(z);
-                return edge["weight"];
-            });
-
+            return g.EdgesRaw().Sum(z => (g.EdgeRaw(z)).Weight);
         }
 
-        public static JavaScriptLikeObject treeDepths(DagreGraph g)
+        public static Dictionary<string, int> treeDepths(DagreGraph g)
         {
-            JavaScriptLikeObject depths = new JavaScriptLikeObject();
+            Dictionary<string, int> depths = new Dictionary<string, int>();
             Action<string, int> dfs = null;
             dfs = (v, depth) =>
             {
-                var children = g.children(v);
+                var children = g.Children(v);
                 if (children != null && children.Length > 0)
                 {
                     foreach (var child in children)
@@ -170,14 +163,10 @@ namespace Dagre
                         dfs(child, depth + 1);
                     }
                 }
-                if (!depths.ContainsKey(v))
-                {
-                    depths.Add(v, depth);
-                }
                 depths[v] = depth;
             };
 
-            foreach (var v in g.children())
+            foreach (var v in g.Children())
             {
                 dfs(v, 1);
             }

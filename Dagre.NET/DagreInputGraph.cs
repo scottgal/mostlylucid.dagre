@@ -100,40 +100,27 @@ namespace Dagre
             check();
             DagreGraph dg = new DagreGraph(true);
 
-            var list1 = nodes.Where(z => z is DagreInputGroup || z.Childs.Any() || z.Parents.Any()).ToList();
+            var list1 = nodes.Where(z => z is DagreInputGroup || z.Childs.Count > 0 || z.Parents.Count > 0).ToList();
 
             foreach (var gg in list1.Where(z => !(z is DagreInputGroup)))
             {
                 var ind = list1.IndexOf(gg);
-                dg.setNode(ind + "", new JavaScriptLikeObject());
-                var nd = dg.node(ind + "");
-
-                nd["source"] = gg;
-                nd["width"] = gg.Width;
-                nd["height"] = gg.Height;
+                var nd = new NodeLabel { ["source"] = gg, ["width"] = gg.Width, ["height"] = gg.Height };
+                dg.SetNode(ind + "", nd);
             }
 
             foreach (var gg in list1.Where(z => (z is DagreInputGroup)))
             {
                 var ind = list1.IndexOf(gg);
-                dg.setNode(ind + "", new JavaScriptLikeObject());
-                var nd = dg.node(ind + "");
-
-                nd["source"] = gg;
-
-
-                nd["isGroup"] = true;
-                nd["width"] = 0;
-                nd["height"] = 0;
-
-
+                var nd = new NodeLabel { ["source"] = gg, ["isGroup"] = true, ["width"] = 0f, ["height"] = 0f };
+                dg.SetNode(ind + "", nd);
             }
             foreach (var gg in list1.Where(z => z.Group != null && !(z is DagreInputGroup)))
             {
                 var ind = list1.IndexOf(gg);
-                var nd = dg.node(ind.ToString());
+                var nd = dg.Node(ind.ToString());
                 var ind2 = list1.IndexOf(gg.Group);
-                dg.setParent(ind.ToString(), ind2.ToString());
+                dg.SetParent(ind.ToString(), ind2.ToString());
             }
 
             foreach (var gg in list1)
@@ -143,26 +130,26 @@ namespace Dagre
                 foreach (var item in gg.Childs)
                 {
                     var edge = edges.First(z => z.From == gg && z.To == item);
-                    JavaScriptLikeObject jj = new JavaScriptLikeObject();
-
-                    jj["minlen"] = edge.MinLen;
-
-                    jj.Add("weight", 1);
-                    jj.Add("width", 0);
-                    jj.Add("height", 0);
-                    jj.Add("labeloffset", 10);
-                    jj.Add("labelpos", "r");
-                    jj.Add("source", edge);
-                    dg.setEdge(new object[] { ind + "", list1.IndexOf(item) + "", jj });
+                    var jj = new EdgeLabel
+                    {
+                        ["minlen"] = edge.MinLen,
+                        ["weight"] = 1,
+                        ["width"] = 0,
+                        ["height"] = 0,
+                        ["labeloffset"] = 10,
+                        ["labelpos"] = "r",
+                        ["source"] = edge
+                    };
+                    dg.SetEdge(ind.ToString(), list1.IndexOf(item).ToString(), jj);
                 }
             }
-            dg.graph()["ranksep"] = 20;
-            dg.graph()["edgesep"] = 20;
-            dg.graph()["nodesep"] = 25;
+            dg.Graph().RankSep = 20;
+            dg.Graph().EdgeSep = 20;
+            dg.Graph().NodeSep = 25;
             if (VerticalLayout)
-                dg.graph()["rankdir"] = "tb";
+                dg.Graph().RankDir = "tb";
             else
-                dg.graph()["rankdir"] = "lr";
+                dg.Graph().RankDir = "lr";
             DagreLayout.runLayout(dg, (f) =>
             {
                 progress?.Invoke(f);
@@ -171,28 +158,22 @@ namespace Dagre
             //back
             for (int i = 0; i < nodes.Count; i++)
             {
-                var node = dg.node(i + "");
+                var node = dg.Node(i + "");
                 var n = nodes[i];
-                dynamic xx = node["x"];
-                dynamic yy = node["y"];
-                dynamic ww = node["width"];
-                dynamic hh = node["height"];
-                n.X = (float)xx - (float)ww / 2;
-                n.Y = (float)yy - (float)hh / 2;
-                n.Width = (float)ww;
-                n.Height = (float)hh;
-
+                n.X = node.X - node.Width / 2;
+                n.Y = node.Y - node.Height / 2;
+                n.Width = node.Width;
+                n.Height = node.Height;
             }
 
-            foreach (var item in dg.edges())
+            foreach (var item in dg.Edges())
             {
-                var edge = dg.edge(item);
-                var src = edge["source"] as DagreInputEdge;
-                dynamic pnts = edge["points"];
-                List<DagreCurvePoint> rr = new List<DagreCurvePoint>();
-                foreach (dynamic itemz in pnts)
+                var edge = dg.Edge(item);
+                var src = edge.Source as DagreInputEdge;
+                var rr = new List<DagreCurvePoint>();
+                foreach (var pt in edge.Points)
                 {
-                    rr.Add(new DagreCurvePoint((float)itemz["x"], (float)itemz["y"]));
+                    rr.Add(new DagreCurvePoint(pt.X, pt.Y));
                 }
 
                 src.Points = rr.ToArray();

@@ -1,11 +1,12 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 
 namespace Dagre
 {
-    public class order
+    public class Order
     {
 
         /*
@@ -23,83 +24,66 @@ namespace Dagre
          *    1. Graph nodes will have an "order" attribute based on the results of the
          *       algorithm.
          */
-        /*public static DagreGraph[] buildLayerGraphs(DagreGraph g, int[] ranks, string relationship)
-        {
-            return ranks.Select(z => buildLayerGraph(g, z, relationship)).ToArray();
-        }*/
-
 
         public static void _order(DagreGraph g, Action<float> progress = null)
         {
-            List<DagreGraph> downLayerGraphs = new List<DagreGraph>();
-            List<DagreGraph> upLayerGraphs = new List<DagreGraph>();
-            var rank = util.maxRank(g);
+            var rank = Util.maxRank(g);
 
-            for (int i = 0; i < rank; i++)
+            // Build layer graphs concurrently
+            var downArr = new DagreGraph[rank];
+            var upArr = new DagreGraph[rank];
+            Parallel.ForEachAsync(Enumerable.Range(0, rank), async (i, _) =>
             {
-                downLayerGraphs.Add(buildLayerGraph(g, i + 1, "inEdges"));
-            }
-            for (int i = 0; i < rank; i++)
-            {
-                upLayerGraphs.Add(buildLayerGraph(g, rank - i - 1, "outEdges"));
-                progress?.Invoke((float)i / rank);
-            }
+                downArr[i] = buildLayerGraph(g, i + 1, "inEdges");
+                upArr[i] = buildLayerGraph(g, rank - i - 1, "outEdges");
+                await Task.CompletedTask;
+            }).GetAwaiter().GetResult();
+            // downArr and upArr are already arrays; no need for List wrappers
 
             progress?.Invoke(0.5f);
 
-
-            dynamic layering = initOrder(g) as object[][];
+            var layering = initOrder(g);
             assignOrder(g, layering);
-            
 
-            //var or = DagreGraph.FromJson(DagreTester.ReadResourceTxt("afterAssignOrder"));
-            // or.Compare(g);
-            dynamic bestCC = float.PositiveInfinity;
-            object[] best = null;
+            float bestCC = float.PositiveInfinity;
+            string[][] best = null;
 
 
             for (int i = 0, lastBest = 0; lastBest < 4; ++i, ++lastBest)
             {
-                sweepLayerGraphs((i % 2 != 0) ? downLayerGraphs.ToArray() : upLayerGraphs.ToArray(), i % 4 >= 2);
-                
-                layering = util.buildLayerMatrix(g);
-                var cc = crossCount(g, layering);
+                sweepLayerGraphs((i % 2 != 0) ? downArr : upArr, i % 4 >= 2);
+
+                var rawLayering = Util.buildLayerMatrix(g);
+                var cc = crossCount(g, rawLayering);
                 if (cc < bestCC)
                 {
                     lastBest = 0;
-                    var length = layering.Count;
-                    best = new object[length];
-                    for (var j = 0; j < length; j++)
-                    {
-                        // best[i] = layering[i].slice()
-                        //clone here
-                        List<object> cln = new List<object>();
-                        foreach (var item in layering[j].Values)
-                        {
-                            cln.Add(item);
-                        }
-                        best[j] = cln;
-                    }
+                    best = rawLayering.ToArray();
                     bestCC = cc;
-                    /////
-                    //lastBest = 0;
-                    //best = util.cloneDeep(layering);
-                    // bestCC = cc;
                 }
             }
-            
+
             assignOrder(g, best);
 
         }
 
         public static string[] reorderKeys(string[] ret)
         {
-           
-            var dgts = ret.Where(z => z.All(char.IsDigit)).ToArray();
-            Array.Sort(dgts, (x, y) => int.Parse(x) - int.Parse(y));
-            var remains = ret.Except(dgts).ToArray();
-            Array.Sort(remains, (x, y) => string.CompareOrdinal(x, y));
-            ret = dgts.Union(remains).ToArray();
+            // Partition in-place: digits first, then non-digits
+            int digitEnd = 0;
+            for (int i = 0; i < ret.Length; i++)
+            {
+                if (ret[i].All(char.IsDigit))
+                {
+                    if (i != digitEnd)
+                        (ret[digitEnd], ret[i]) = (ret[i], ret[digitEnd]);
+                    digitEnd++;
+                }
+            }
+            // Sort digit portion by numeric value
+            Array.Sort(ret, 0, digitEnd, Comparer<string>.Create((x, y) => int.Parse(x) - int.Parse(y)));
+            // Sort non-digit portion lexicographically
+            Array.Sort(ret, digitEnd, ret.Length - digitEnd, StringComparer.Ordinal);
             return ret;
         }
 
@@ -108,42 +92,36 @@ namespace Dagre
             var cg = new DagreGraph(false);
             foreach (var lg in layerGraphs)
             {
-                var root = lg.graph()["root"];
-                var sorted = sortSubGraphModule.sortSubraph(lg as DagreGraph, root, cg, biasRight);
-                var vs = sorted["vs"] as List<object>;
-              /*  vs=reorderKeys(vs.Cast<string>().ToArray()).Cast<object>().ToList();
-                sorted["vs"] = vs;*/
+                var root = lg.Graph().Root;
+                var sorted = SortSubGraph.sortSubraph(lg as DagreGraph, root, cg, biasRight);
+                var vs = sorted.Vs;
                 var length = vs.Count;
                 for (var i = 0; i < length; i++)
                 {
                     var vv = vs[i];
-                    if (vv == "0")
-                    {
-
-                    }
-                    (lg as DagreGraph).node(vv)["order"] = i;
+                    ((lg as DagreGraph).Node(vv)).Order = i;
                 }
-                addSubgraphConstraints(lg, cg, sorted["vs"]);
+                addSubgraphConstraints(lg, cg, sorted.Vs);
             }
 
         }
-        public static void addSubgraphConstraints(DagreGraph g, DagreGraph cg, dynamic vs)
+        public static void addSubgraphConstraints(DagreGraph g, DagreGraph cg, List<string> vs)
         {
-            dynamic prev = new JavaScriptLikeObject();
-            object rootPrev = null;
-            foreach (dynamic v in vs)
+            var prev = new Dictionary<string, string>(StringComparer.Ordinal);
+            string rootPrev = null;
+            foreach (var v in vs)
             {
-                var child = g.parent(v);
-                dynamic parent = null;
-                dynamic prevChild = null;
+                var child = g.Parent(v);
+                string parent = null;
+                string prevChild = null;
                 while (child != null)
                 {
-                    parent = g.parent(child);
+                    parent = g.Parent(child);
                     if (parent != null)
                     {
                         prevChild = null;
-                        if (prev.ContainsKey(parent))
-                        prevChild = prev[parent];
+                        if (prev.TryGetValue(parent, out var pc))
+                            prevChild = pc;
                         prev[parent] = child;
                     }
                     else
@@ -153,33 +131,22 @@ namespace Dagre
                     }
                     if (prevChild != null && prevChild != child)
                     {
-                        cg.setEdge(new object[] { prevChild, child });
+                        cg.SetEdge(prevChild, child);
                         return;
                     }
                     child = parent;
                 }
             }
         }
-        public static void assignOrder(DagreGraph g, dynamic layering)
+        public static void assignOrder(DagreGraph g, string[][] layering)
         {
             foreach (var layer in layering)
             {
-                int len = 0;
-                if (layer is Array) len = layer.Length;
-                else len = layer.Count;
-                for (int i = 0; i < len; i++)
+                for (int i = 0; i < layer.Length; i++)
                 {
-                    var v = layer[i];
-                    g.node(v)["order"] = i;
+                    (g.Node(layer[i])).Order = i;
                 }
-
-
             }
-            //_.forEach(layering, function(layer) {
-            //    _.forEach(layer, function(v, i) {
-            //        g.node(v).order = i;
-            //    });
-            //});
         }
 
         #region buildLayerGraph
@@ -216,68 +183,72 @@ namespace Dagre
          */
         public static DagreGraph buildLayerGraph(DagreGraph g, int rank, string relationship)
         {
-            object root;
+            string root;
             while (true)
             {
-                root = util.uniqueId("_root");
-                if (!g.hasNode((string)root)) break;
+                root = Util.uniqueId("_root");
+                if (!g.HasNode(root)) break;
             }
             var graph = new DagreGraph(true) { _isCompound = true };
-            JavaScriptLikeObject jo = new JavaScriptLikeObject();
-            jo.Add("root", root);
-            graph.setGraph(jo);
-            graph.setDefaultNodeLabel((v) => g.node(v));
-            foreach (var v in g.nodes())
+            graph.Graph().Root = root;
+            graph.SetDefaultNodeLabel((v) => g.Node(v));
+            foreach (var v in g.Nodes())
             {
-                var node = g.node(v);
+                var node = g.Node(v);
                 RankTag rtag = null;
-                
+
                 if (node.RankTag == null)
                 {
                     rtag = node.RankTag = new RankTag();
                     if (node.ContainsKey("rank"))
-                    rtag.Rank = (int)node["rank"];
+                        rtag.Rank = node.Rank;
                     if (node.ContainsKey("minRank"))
-                        rtag.MinRank = (int)node["minRank"];
+                        rtag.MinRank = node.MinRank;
                     if (node.ContainsKey("maxRank"))
-                        rtag.MaxRank = (int)node["maxRank"];
+                        rtag.MaxRank = node.MaxRank;
                 }
-                rtag = node.RankTag;                
+                rtag = node.RankTag;
                 if ((rtag.Rank != null && rtag.Rank == rank) || (rtag.MinRank != null && rtag.MaxRank != null && rtag.MinRank <= rank && rank <= rtag.MaxRank))
                 {
-                    graph.setNode(v);
-                    var parent = g.parent(v);
-                    graph.setParent2(v, parent != null ? parent : root);
+                    graph.SetNode(v);
+                    var parent = g.Parent(v);
+                    graph.SetParent(v, parent ?? root);
                     // This assumes we have only short edges!
-                    object[] rr = null;
+                    DagreEdgeIndex[] rr = null;
                     if (relationship == "inEdges")
                     {
-                        rr = g.inEdges(v);
+                        rr = g.InEdges(v);
                     }
                     else if (relationship == "outEdges")
                     {
-                        rr = g.outEdges(v);
+                        rr = g.OutEdges(v);
                     }
                     else
                     {
                         throw new DagreException();
                     }
-                    foreach (dynamic e in rr)
+                    foreach (var e in rr)
                     {
-                        var u = e["v"] == v ? e["w"] : e["v"];
-                        var edge = graph.edgeRaw(new object[] { u, v });
-                        var weight = edge != null ? edge["weight"] : 0;
-                        JavaScriptLikeObject j = new JavaScriptLikeObject();
-                        j.Add("weight", g.edge(e)["weight"] + weight);
-                        graph.setEdge(new object[] { u, v, j });
+                        var u = e.v == v ? e.w : e.v;
+                        var existingEdge = graph.EdgeRaw(u, v) as EdgeLabel;
+                        var weight = existingEdge != null ? existingEdge.Weight : 0;
+                        var edgeLabel = g.Edge(e);
+                        var j = new EdgeLabel();
+                        j["weight"] = edgeLabel.Weight + weight;
+                        graph.SetEdge(u, v, j);
                     }
                     if (rtag.MinRank != null)
                     {
-                        var jj = new JavaScriptLikeObject();
-                        jj.Add("borderLeft", node["borderLeft"][rank.ToString()]);
-                        jj.Add("borderRight", node["borderRight"][rank.ToString()]);
+                        var jj = new NodeLabel();
+                        var rankStr = rank.ToString();
+                        // Store border node IDs as overflow strings for layer graph consumption
+                        // (sortSubGraphModule reads these via TryGetValue + 'as string')
+                        if (node.BorderLeft != null && node.BorderLeft.TryGetValue(rankStr, out var bl))
+                            jj.Add("_borderLeft", bl);
+                        if (node.BorderRight != null && node.BorderRight.TryGetValue(rankStr, out var br))
+                            jj.Add("_borderRight", br);
 
-                        graph.setNode(v, jj);
+                        graph.SetNode(v, jj);
                     }
                 }
             }
@@ -286,25 +257,27 @@ namespace Dagre
 
         public static void createRootNode(DagreGraph g)
         {
-            //util.uniqueId("_root")
-            /*   var v;
-               while (g.hasNode((v = _.uniqueId("_root")))) ;
-               return v;*/
         }
         #endregion
 
-        public static void initOrderDfs(DagreGraph g, List<List<object>> layers, JavaScriptLikeObject visited, string v)
+        public static void initOrderDfs(DagreGraph g, List<List<string>> layers, HashSet<string> visited, string v)
         {
-            if (visited.ContainsKey((string)v)) return;
+            if (!visited.Add(v)) return;
 
-            visited[v] = true;
-            var node = g.node(v);
-            
-            var rank = g.node(v)["rank"];
-            layers[rank].Add(v);
-            foreach (dynamic item in g.successors(v))
+            var node = g.Node(v);
+            if (node == null || !node.ContainsKey("rank")) return;
+
+            var rank = node.Rank;
+            if (rank >= 0 && rank < layers.Count)
+                layers[rank].Add(v);
+
+            var successors = g.Successors(v);
+            if (successors != null)
             {
-                initOrderDfs(g, layers, visited, item);
+                foreach (var item in successors)
+                {
+                    initOrderDfs(g, layers, visited, item);
+                }
             }
         }
 
@@ -320,82 +293,68 @@ namespace Dagre
         * Returns a layering matrix with an array per layer and each layer sorted by
         * the order of its nodes.
         */
-        public static object initOrder(DagreGraph g)
+        public static string[][] initOrder(DagreGraph g)
         {
-            List<List<string>> ret = new List<List<string>>();
-            JavaScriptLikeObject visited = new JavaScriptLikeObject();
-            var nodes = g.nodes().Where((v) => g.children(v).Length == 0).ToArray();
-            dynamic maxRank = null;
-            foreach (dynamic v in nodes)
+            var visited = new HashSet<string>(StringComparer.Ordinal);
+            var allNodes = g.Nodes();
+            var nodes = new List<string>(allNodes.Length);
+            foreach (var v in allNodes)
             {
-                var temp1 = g.children((string)v);
-                if (!(temp1.Length > 0))
+                if (g.Children(v).Length == 0) nodes.Add(v);
+            }
+            // Compute maxRank from ALL nodes (not just leaves) because
+            // initOrderDfs traverses successors which may include non-leaf nodes
+            int maxRank = -1;
+            bool hasRank = false;
+            foreach (var v in allNodes)
+            {
+                var nodeLabel = g.Node(v);
+                if (nodeLabel != null && nodeLabel.ContainsKey("rank"))
                 {
-                    var rank = g.node(v)["rank"];
-                    if (maxRank == null || (rank != null && rank > maxRank))
+                    var rank = nodeLabel.Rank;
+                    if (!hasRank || rank > maxRank)
                     {
                         maxRank = rank;
+                        hasRank = true;
                     }
                 }
             }
-            if (maxRank != null)
+            if (hasRank)
             {
-                List<List<object>> layers = new List<List<object>>();
+                var layers = new List<List<string>>(maxRank + 1);
                 for (int i = 0; i < maxRank + 1; i++)
                 {
-                    layers.Add(new List<object>());
+                    layers.Add(new List<string>());
                 }
-                //var layers = Array.from(new Array(maxRank + 1), () => []);
-                var temp1 = nodes.Select((v) => new object[] { g.node(v)["rank"], v }).ToArray();
-                Dictionary<int, List<object>> dicc = new Dictionary<int, List<object>>();
-                foreach (var item in temp1)
+                // Group nodes by rank and sort by rank, then DFS
+                var dicc = new Dictionary<int, List<string>>();
+                foreach (var v in nodes)
                 {
-                    dynamic aa = item[0];
-                    dynamic bb = item[1];
-                    if (!dicc.ContainsKey(aa))
+                    var nodeRank = (g.Node(v)).Rank;
+                    if (!dicc.TryGetValue(nodeRank, out var rankList))
                     {
-                        dicc.Add(aa, new List<object>());
+                        rankList = new List<string>();
+                        dicc[nodeRank] = rankList;
                     }
-
-                    dicc[aa].Add(bb);
+                    rankList.Add(v);
                 }
-                var aaa = dicc.OrderBy(z => z.Key).ToArray();
-                var temp2 = aaa.SelectMany(z => z.Value).ToArray();
-
-                //var temp2 = jj.Keys;
-                bool oldStyle = true;
-                if (oldStyle)
+                // Sort keys and flatten — avoid LINQ OrderBy in hot path
+                var sortedKeys = new List<int>(dicc.Keys);
+                sortedKeys.Sort();
+                foreach (var key in sortedKeys)
                 {
-                    foreach (dynamic v in temp2)
+                    foreach (var v in dicc[key])
                     {
                         initOrderDfs(g, layers, visited, v);
                     }
                 }
-                else
-                {
-                foreach (var v in temp2)
-                {
-                    List<object> queue = new List<object>();
-                    queue.Add(v);
 
-                    while (queue.Count > 0)
-                    {
-                        var v2 = queue[0];
-                        queue.RemoveAt(0);
-                        if (!visited.ContainsKey((string)v2))
-                        {
-                            visited.Add((string)v2, true);
-                            var rank = g.node(v2)["rank"];
-                            layers[rank].Add(v2);
-                            queue.AddRange(g.successors((string)v2));
-                        }
-                    }
-                }
-                }
-
-                return layers.Select(z => z.ToArray()).ToArray();
+                var result = new string[layers.Count][];
+                for (int i = 0; i < layers.Count; i++)
+                    result[i] = layers[i].ToArray();
+                return result;
             }
-            return new JavaScriptLikeObject();
+            return Array.Empty<string[]>();
         }
 
         #endregion
@@ -418,7 +377,7 @@ namespace Dagre
          *
          * This algorithm is derived from Barth, et al., "Bilayer Cross Counting."
          */
-        public static int crossCount(DagreGraph g, dynamic layering)
+        public static int crossCount(DagreGraph g, List<string[]> layering)
         {
             var cc = 0;
             for (var i = 1; i < layering.Count; ++i)
@@ -428,71 +387,76 @@ namespace Dagre
             return cc;
         }
 
-        public static int twoLayerCrossCount(DagreGraph g, dynamic northLayer, dynamic southLayer)
+        public static int twoLayerCrossCount(DagreGraph g, string[] northLayer, string[] southLayer)
         {
             // Sort all of the edges between the north and south layers by their position
             // in the north layer and then the south. Map these edges to the position of
             // their head in the south layer.
-            JavaScriptLikeObject southPos = new JavaScriptLikeObject();
-            for (var i = 0; i < southLayer.Count; i++)
+            int southCount = southLayer.Length;
+            var southPos = new Dictionary<string, int>(southCount, StringComparer.Ordinal);
+            for (int idx = 0; idx < southLayer.Length; idx++)
             {
-                southPos[(string)southLayer["" + i]] = i;
+                southPos[southLayer[idx]] = idx;
             }
-            //const southEntries = northLayer.map((v) => g.outEdges(v)
-            //.map((e) => {return { pos: southPos[e.w], weight: g.edge(e).weight }; })
-            //.sort((a, b) => a.pos - b.pos)).flat();
-            List<object> southEntries = new List<object>();
-            foreach (dynamic item in northLayer.Values)
+
+            var southEntries = new List<CrossEntry>();
+            foreach (var v in northLayer)
             {
-                var temp1 = g.outEdges(item);
-                List<object> ret2 = new List<object>();
-                foreach (var e in temp1)
+                var outEdges = g.OutEdges(v);
+                var entries = new List<CrossEntry>();
+                foreach (var e in outEdges)
                 {
-                    JavaScriptLikeObject ss = new JavaScriptLikeObject();
-                    ss.Add("pos", southPos[e["w"]]);
-                    ss.Add("weight", g.edge(e)["weight"]);
-                    ret2.Add(ss);
+                    if (southPos.TryGetValue(e.w, out var pos))
+                    {
+                        entries.Add(new CrossEntry
+                        {
+                            Pos = pos,
+                            Weight = (g.Edge(e)).Weight
+                        });
+                    }
                 }
-                ret2 = ret2.OrderBy(z => (dynamic)(((dynamic)z)["pos"])).ToList();
-                southEntries.AddRange(ret2);
+                entries.Sort((a, b) => a.Pos - b.Pos);
+                southEntries.AddRange(entries);
             }
-            
+
             // Build the accumulator tree
             var firstIndex = 1;
-            while (firstIndex < southLayer.Count)
+            while (firstIndex < southCount)
             {
                 firstIndex <<= 1;
             }
-            //const tree = Array.from(new Array(2 * firstIndex - 1), () => 0);
-            var tree = new List<object>() { };
-            for (int i = 0; i < 2 * firstIndex - 1; i++)
-            {
-                tree.Add(0);
-            }
+            var tree = new int[2 * firstIndex - 1];
             firstIndex -= 1;
             // Calculate the weighted crossings
             var cc = 0;
-            foreach (dynamic entry in southEntries)
+            foreach (var entry in southEntries)
             {
-                var index = entry["pos"] + firstIndex;
-                tree[index] += entry["weight"];
-                dynamic weightSum = 0;
+                var index = entry.Pos + firstIndex;
+                var w = entry.Weight;
+                tree[index] += w;
+                int weightSum = 0;
                 while (index > 0)
                 {
-                    if (index % 2 != 0)
+                    if ((index & 1) != 0)
                     {
                         weightSum += tree[index + 1];
                     }
                     index = (index - 1) >> 1;
-                    tree[index] += entry["weight"];
+                    tree[index] += w;
                 }
-                cc += entry["weight"] * weightSum;
+                cc += w * weightSum;
             }
             return cc;
         }
+
+        struct CrossEntry
+        {
+            public int Pos;
+            public int Weight;
+        }
         #endregion
     }
-    public class barycenterDto
+    public class BarycenterResult
     {
 
         public string v;
@@ -506,4 +470,3 @@ namespace Dagre
         public int? MaxRank;
     }
 }
-

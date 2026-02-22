@@ -1,12 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace Dagre
 {
-    public class resolveConflictsModule
+    public class ResolveConflicts
     {
-
         /*
          * Given a list of entries of the form {v, barycenter, weight} and a
          * constraint graph this function will resolve any conflicts between the
@@ -33,220 +32,119 @@ namespace Dagre
          *    elements in `vs`.
          */
 
-        public class resolveDto
+        public static void mergeEntries(OrderEntry target, OrderEntry source)
         {
-            public int i;
-            public int? indegree;
-            public string[] _in;
-            public string[] _out;
-            public string[] vs;
-            public int barycenter;
-            public int weight;
-            internal bool? merged;
-        }
-        public static void mergeEntries(dynamic target, dynamic source)
-        {
-            var sum = 0;
-            var weight = 0;
-            if (target.ContainsKey("weight") && target["weight"] != 0)
+            float sum = 0;
+            float weight = 0;
+            if (target.Weight.HasValue && target.Weight.Value != 0)
             {
-                sum += target["barycenter"] * target["weight"];
-                weight += target["weight"];
+                sum += target.Barycenter.Value * target.Weight.Value;
+                weight += target.Weight.Value;
             }
-            if (source.ContainsKey("weight") && source["weight"] != 0)
+            if (source.Weight.HasValue && source.Weight.Value != 0)
             {
-                sum += source["barycenter"] * source["weight"];
-                weight += source["weight"];
+                sum += source.Barycenter.Value * source.Weight.Value;
+                weight += source.Weight.Value;
             }
-            target["vs"] = source["vs"].Union(target["vs"]);
-            target["barycenter"] = sum / weight;
-            target["weight"] = weight;
-            target["i"] = Math.Min(source["i"], target["i"]);
-            source["merged"] = true;
+            var merged = new List<string>(source.Vs.Count + target.Vs.Count);
+            merged.AddRange(source.Vs);
+            merged.AddRange(target.Vs);
+            target.Vs = merged;
+            target.Barycenter = sum / weight;
+            target.Weight = weight;
+            target.I = Math.Min(source.I, target.I);
+            source.Merged = true;
         }
 
-        public static object resolveConflicts(dynamic entities, DagreGraph cg)
+        public static OrderEntry[] resolveConflicts(OrderEntry[] entities, DagreGraph cg)
         {
-            Dictionary<string, object> mappedEntries = new Dictionary<string, object>();
+            var mappedEntries = new Dictionary<string, OrderEntry>(StringComparer.Ordinal);
             for (int i = 0; i < entities.Length; i++)
             {
-                dynamic entry = entities[i];
+                var entry = entities[i];
 
-                JavaScriptLikeObject tmp = new JavaScriptLikeObject();
-                tmp.Add("indegree", 0);
-                tmp.Add("in", new List<object>());
-                tmp.Add("out", new List<object>());
-                tmp.Add("vs", new List<object> { entry["v"] });
-                tmp.Add("i", i);
-
-                mappedEntries.Add(entry["v"], tmp);
-                if (entry.ContainsKey("barycenter"))
+                var mapped = new OrderEntry
                 {
-                    tmp["barycenter"] = entry["barycenter"];
-                    tmp["weight"] = entry["weight"];
+                    Indegree = 0,
+                    InEntries = new List<OrderEntry>(),
+                    OutEntries = new List<OrderEntry>(),
+                    Vs = new List<string> { entry.V },
+                    I = i
+                };
+
+                if (entry.Barycenter.HasValue)
+                {
+                    mapped.Barycenter = entry.Barycenter;
+                    mapped.Weight = entry.Weight;
                 }
+
+                mappedEntries[entry.V] = mapped;
             }
 
-            foreach (var e in cg.edges())
+            foreach (var e in cg.Edges())
             {
-                dynamic entryV = mappedEntries[e["v"]];
-                dynamic entryW = mappedEntries[e["w"]];
-                if (entryV != null && entryW != null)
+                OrderEntry entryV, entryW;
+                if (mappedEntries.TryGetValue(e.v, out entryV) && mappedEntries.TryGetValue(e.w, out entryW))
                 {
-                    entryW["indegree"]++;
-                    entryV["out"].Add(mappedEntries[e["w"]]);
+                    entryW.Indegree++;
+                    entryV.OutEntries.Add(entryW);
                 }
-
             }
-            var sourceSet = mappedEntries.Values.Where(z => ((dynamic)z)["indegree"] != null).ToList();
 
+            var sourceSet = new List<OrderEntry>();
+            foreach (var entry2 in mappedEntries.Values)
+                if (entry2.Indegree == 0) sourceSet.Add(entry2);
 
-            //return doResolveConflicts(sourceSet);
-            List<object> results = new List<object>();
+            var results = new List<OrderEntry>();
             while (sourceSet.Count != 0)
             {
-                dynamic entry = sourceSet[sourceSet.Count - 1];
+                var entry = sourceSet[sourceSet.Count - 1];
                 sourceSet.RemoveAt(sourceSet.Count - 1);
                 results.Add(entry);
-                //entry["in"].reverse().forEach(handleIn(entry));
-                var aa = (dynamic)entry["in"];
-                aa.Reverse();
-                foreach (var uEntry in aa)
+
+                // Process in-entries in reverse
+                entry.InEntries.Reverse();
+                foreach (var uEntry in entry.InEntries)
                 {
-                    var vEntry = entry;
-                    if (uEntry["merged"])
+                    if (uEntry.Merged)
                     {
                         continue;
                     }
-                    if (uEntry["barycenter"] == null || vEntry["barycenter"] == null
-                        || uEntry["barycenter"] >= vEntry["barycenter"])
+                    if (!uEntry.Barycenter.HasValue || !entry.Barycenter.HasValue
+                        || uEntry.Barycenter.Value >= entry.Barycenter.Value)
                     {
-                        mergeEntries(vEntry, uEntry);
+                        mergeEntries(entry, uEntry);
                     }
                 }
-                //entry["out"]forEach(handleOut(entry));
-                foreach (var wEntry in (dynamic)entry["out"])
+
+                // Process out-entries
+                foreach (var wEntry in entry.OutEntries)
                 {
-                    var vEntry = entry;
-                    wEntry["in"].Add(vEntry);
-                    if (--wEntry["indegree"] == 0)
+                    wEntry.InEntries.Add(entry);
+                    if (--wEntry.Indegree == 0)
                     {
                         sourceSet.Add(wEntry);
                     }
                 }
             }
-            var temp1 = results.Where(z => !((dynamic)z).ContainsKey("merged"));
 
-            return temp1.Select(obj =>
+            int resultCount = 0;
+            foreach (var e in results)
+                if (!e.Merged) resultCount++;
+            var output = new OrderEntry[resultCount];
+            int idx = 0;
+            foreach (var e in results)
             {
-                dynamic value = new JavaScriptLikeObject();
-                var attrs = new string[] { "vs", "i", "barycenter", "weight" };
-                dynamic _obj = obj;
-                foreach (var key in attrs)
-                {
-                    if (_obj.ContainsKey(key))
+                if (!e.Merged)
+                    output[idx++] = new OrderEntry
                     {
-                        value[key] = _obj[key];
-                    }
-                }
-                return value;
-            }).ToArray();
-        }
-
-        private static resolveDto1[] doResolveConflicts(dynamic _sourceSet)
-        {
-            List<KeyValuePair<string, resolveDto>> entries = new List<KeyValuePair<string, resolveDto>>();
-            var sourceSet = _sourceSet.ToList();
-            Action<KeyValuePair<string, resolveDto>> handleIn = (vEntry) =>
-            {
-                /*
-                 *     return function(uEntry) {
-           if (uEntry.merged)
-           {
-               return;
-           }
-           if (_.isUndefined(uEntry.barycenter) ||
-               _.isUndefined(vEntry.barycenter) ||
-               uEntry.barycenter >= vEntry.barycenter)
-           {
-               mergeEntries(vEntry, uEntry);
-           }
-       };
-                 */
-            };
-            Action<KeyValuePair<string, resolveDto>> handleOut = (vEntry) =>
-            {
-                /*
-                 *    return function(wEntry) {
-           wEntry["in"].push(vEntry);
-           if (--wEntry.indegree === 0)
-           {
-               sourceSet.push(wEntry);
-           }
-       };
-                 */
-            };
-            while (sourceSet.Count > 0)
-            {
-                var entry = sourceSet.Last();
-                sourceSet.RemoveAt(sourceSet.Count - 1);
-                entries.Add(entry);
-                foreach (var item in entry.Value._in.Reverse())
-                {
-                    handleIn(entry);
-                }
-                foreach (var item in entry.Value._out)
-                {
-                    handleOut(entry);
-                }
+                        Vs = e.Vs,
+                        I = e.I,
+                        Barycenter = e.Barycenter,
+                        Weight = e.Weight
+                    };
             }
-            var ww1 = entries.Where(entry => entry.Value.merged != null);
-            return ww1.Select(entry => new resolveDto1 { i = entry.Value.i, weight = entry.Value.weight, barycenter = entry.Value.barycenter, vs = entry.Value.vs }).ToArray();
+            return output;
         }
-
-        public class resolveDto1
-        {
-            public int barycenter;
-            public int i;
-            public int weight;
-            public string[] vs;
-        }
-        /*
-
-
-
-
-
-    return _.map(_.filter(entries, function(entry) { return !entry.merged; }),
-    function(entry) {
-       return _.pick(entry, ["vs", "i", "barycenter", "weight"]);
-    });
-
-    }
-
-    function mergeEntries(target, source)
-    {
-    var sum = 0;
-    var weight = 0;
-
-    if (target.weight)
-    {
-       sum += target.barycenter * target.weight;
-       weight += target.weight;
-    }
-
-    if (source.weight)
-    {
-       sum += source.barycenter * source.weight;
-       weight += source.weight;
-    }
-
-    target.vs = source.vs.concat(target.vs);
-    target.barycenter = sum / weight;
-    target.weight = weight;
-    target.i = Math.min(source.i, target.i);
-    source.merged = true;
-    }
-    */
     }
 }

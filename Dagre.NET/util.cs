@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace Dagre
 {
-    public class util
+    public class Util
     {        
         /*
          * Adjusts the ranks for all nodes in the graph such that all nodes v have
@@ -17,46 +17,42 @@ namespace Dagre
         public static void normalizeRanks(DagreGraph g)
         {
             int min = int.MaxValue;
-            //var min = g.nodesRaw().Min(z => g.nodeRaw(z)["rank"]);
-            foreach (var v in g.nodesRaw())
+            foreach (var v in g.NodesRaw())
             {
-
-                var node = g.nodeRaw(v);
+                var node = g.NodeRaw(v);
                 if (node.ContainsKey("rank"))
                 {
-                    var rank = node["rank"];
-                    if (rank < min)
+                    if (node.Rank < min)
                     {
-                        min = rank;
+                        min = node.Rank;
                     }
-                    //node["rank"] -= min;
                 }
             }
-            foreach (var v in g.nodesRaw())
+            foreach (var v in g.NodesRaw())
             {
-                var node = g.nodeRaw(v);
+                var node = g.NodeRaw(v);
                 if (node.ContainsKey("rank"))
                 {
-                    node["rank"] -= min;
+                    node.Rank -= min;
                 }
             }
         }
 
         public static DagreGraph asNonCompoundGraph(DagreGraph g)
         {
-            var graph = new DagreGraph(false) { _isMultigraph = g.isMultigraph() };
-            graph.setGraph(g.graph());
-            foreach (var v in g.nodesRaw())
+            var graph = new DagreGraph(false) { _isMultigraph = g.IsMultigraph() };
+            graph.SetGraph(g.Graph());
+            foreach (var v in g.NodesRaw())
             {
-                if (g.children(v).Length == 0)
+                if (g.Children(v).Length == 0)
                 {
-                    graph.setNode(v, g.nodeRaw(v));
+                    graph.SetNode(v, g.NodeRaw(v));
                 }
             }
 
-            foreach (var e in g.edgesRaw())
+            foreach (var e in g.EdgesRaw())
             {
-                graph.setEdge(new object[] { e, g.edgeRaw(e) });
+                graph.SetEdge(e.v, e.w, g.EdgeRaw(e), e.name);
             }
 
             return graph;
@@ -68,34 +64,39 @@ namespace Dagre
         }
         public static string uniqueId(string str)
         {
-            uniqueCounter++;
-            return str + uniqueCounter;
+            var id = Interlocked.Increment(ref uniqueCounter);
+            return str + id;
         }
         public static int uniqueCounter = 0;
 
         /*
  * Adds a dummy node to the graph and return v.
  */
-        public static string addDummyNode(DagreGraph g, string type, object attrs, string name)
+        public static string addDummyNode(DagreGraph g, string type, NodeLabel attrs, string name)
         {
             string v = null;
 
             do
             {
                 v = uniqueId(name);
-            } while (g.hasNode(v));
+            } while (g.HasNode(v));
 
-            var dic = attrs as IDictionary<string, object>;
-            DagreGraph.addOrUpdate("dummy", dic, type);
+            attrs.Dummy = type;
 
-            g.setNode(v, attrs);
+            g.SetNode(v, attrs);
             return v;
         }
 
         public static int maxRank(DagreGraph g)
         {
-            return g.nodes().Where(z => g.node(z).ContainsKey("rank")).Select(z => g.node(z)["rank"]).Max();
-
+            int max = 0;
+            foreach (var v in g.Nodes())
+            {
+                var node = g.Node(v);
+                if (node.ContainsKey("rank") && node.Rank > max)
+                    max = node.Rank;
+            }
+            return max;
         }
         /*
  * Returns a new graph with only simple edges. Handles aggregation of data
@@ -103,26 +104,26 @@ namespace Dagre
  */
         public static DagreGraph simplify(DagreGraph g)
         {
-            DagreGraph simplified = new DagreGraph(false).setGraph(g.graph());
-            foreach (var v in g.nodesRaw())
+            DagreGraph simplified = new DagreGraph(false).SetGraph(g.Graph());
+            foreach (var v in g.NodesRaw())
             {
-                simplified.setNode(v, g.nodeRaw(v));
+                simplified.SetNode(v, g.NodeRaw(v));
             }
-            foreach (dynamic e in g.edgesRaw())
+            foreach (var e in g.EdgesRaw())
             {
-                var r = simplified.edgeRaw(new[] { e["v"], e["w"] });
-                JavaScriptLikeObject jo = new JavaScriptLikeObject();
-                jo.Add("minlen", 1);
-                jo.Add("weight", 0);
-                dynamic simpleLabel = r == null ? jo : r;
-                dynamic label = g.edgeRaw(e);
-                JavaScriptLikeObject jo2 = new JavaScriptLikeObject();
-                jo2.Add("weight", simpleLabel["weight"] + label["weight"]);
-                jo2.Add("minlen", Math.Max(simpleLabel["minlen"], label["minlen"]));
+                var r = simplified.EdgeRaw(e.v, e.w);
+                var label = g.EdgeRaw(e);
+                if (label == null) continue;
 
-                simplified.setEdge(new object[] { e["v"], e["w"], jo2 });
+                var simpleWeight = r != null ? r.Weight : 0;
+                var simpleMinlen = r != null ? r.Minlen : 1;
+
+                var merged = new EdgeLabel();
+                merged["weight"] = simpleWeight + label.Weight;
+                merged["minlen"] = Math.Max(simpleMinlen, label.Minlen);
+
+                simplified.SetEdge(e.v, e.w, merged);
             }
-
 
             return simplified;
         }
@@ -133,37 +134,34 @@ namespace Dagre
 * Given a DAG with each node assigned "rank" and "order" properties, this
 * function will produce a matrix with the ids of each node.
 */
-        public static object buildLayerMatrix(DagreGraph g)
+        public static List<string[]> buildLayerMatrix(DagreGraph g)
         {
             var rank = maxRank(g);
-            var range = Enumerable.Range(0, rank + 1);
-            List<object> layering = new List<object>();
-            foreach (var item in Enumerable.Range(0, rank + 1))
+            var layers = new List<List<string>>(rank + 1);
+            for (int i = 0; i <= rank; i++)
             {
-                layering.Add(new JavaScriptLikeObject());
+                layers.Add(new List<string>());
             }
-            //var layering = _.map(_.range(maxRank(g) + 1), function() { return []; });
 
-            var nd = g.nodes();
-            //Array.Sort(nd, (x, y) => string.CompareOrdinal(x, y));
-            foreach (var v in nd)
+            foreach (var v in g.Nodes())
             {
-                var node = g.node(v);
-                
+                var node = g.Node(v);
+
                 if (node.ContainsKey("rank"))
                 {
-                    var rank1 = node["rank"];
-                    /*while (layering[rank].Count < node["order"])
-                    {
-                        layering[rank].Add(null);
-                    }*/
-                    layering[rank1]["" + node["order"]] = v;
+                    layers[node.Rank].Add(v);
                 }
             }
 
+            // Sort each layer by node order and convert to array
+            var result = new List<string[]>(layers.Count);
+            foreach (var layer in layers)
+            {
+                layer.Sort((a, b) => (g.Node(a)).Order.CompareTo((g.Node(b)).Order));
+                result.Add(layer.ToArray());
+            }
 
-
-            return layering;
+            return result;
         }
 
         internal static object addBorderNode(DagreGraph g, string v)
@@ -173,32 +171,32 @@ namespace Dagre
 
         internal static int[] range(int v1, int v2, int step)
         {
-            List<int> ret = new List<int>();
-            for (int i = v1; i != v2; i += step)
+            int count = step > 0 ? Math.Max(0, (v2 - v1 + step - 1) / step)
+                                 : Math.Max(0, (v1 - v2 - step - 1) / (-step));
+            var ret = new int[count];
+            for (int i = 0; i < count; i++)
             {
-                ret.Add(i);
+                ret[i] = v1 + i * step;
             }
-            return ret.ToArray();
+            return ret;
         }
 
         /*
          * Finds where a line starting at point ({x, y}) would intersect a rectangle
          * ({x, y, width, height}) if it were pointing at the rectangle's center.
          */
-        internal static dynamic intersectRect(dynamic rect, dynamic point)
+        internal static DagrePoint intersectRect(NodeLabel rect, DagrePoint point)
         {
-            var x = rect["x"];
-            var y = rect["y"];
+            float x = rect.X;
+            float y = rect.Y;
 
             // Rectangle intersection algorithm from:
             // http://math.stackexchange.com/questions/108113/find-edge-between-two-boxes
-            var dx = point["x"] - x;
-            var dy = point["y"] - y;
-            dynamic w = rect["width"];
-            dynamic h = rect["height"];
-            w = (float)w / 2f;
-            h = (float)h / 2f;
-            if (dx == null && dy == null)
+            float dx = point.X - x;
+            float dy = point.Y - y;
+            float w = rect.Width / 2f;
+            float h = rect.Height / 2f;
+            if (dx == 0 && dy == 0)
             {
                 throw new DagreException("Not possible to find intersection inside of the rectangle");
             }
@@ -225,7 +223,7 @@ namespace Dagre
                 sy = w * dy / (float)dx;
             }
 
-            return DagreLayout.makePoint(x + sx, y + sy);
+            return new DagrePoint(x + sx, y + sy);
         }
 
 

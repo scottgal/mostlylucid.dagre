@@ -19,7 +19,7 @@ permissions:
 
 env:
   DOTNET_VERSION: '10.0.x'
-  PROJECT_PATH: 'Dagre.NET/Dagre.NET.csproj'
+  PROJECT_PATH: 'Mostlylucid.Dagre/Mostlylucid.Dagre.csproj'
 
 jobs:
   pack-and-publish:

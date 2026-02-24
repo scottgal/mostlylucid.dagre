@@ -412,7 +412,7 @@ public class BrandesKopf
 
     public static void AddConflict(Dictionary<string, Dictionary<string, bool>> conflicts, string v, string w)
     {
-        if (string.CompareOrdinal(v, w) == 1)
+        if (string.CompareOrdinal(v, w) > 0)
         {
             var tmp = v;
             v = w;
@@ -538,7 +538,7 @@ public class BrandesKopf
                         if (g.PredecessorCount(v) != 0)
                         {
                             nextNorthPos = g.Node(g.FirstPredecessor(v)).Order;
-                            // scan
+                            // scan between borders
                             for (var si = southPos; si < southLookahead; si++)
                             {
                                 var sv = south[si];
@@ -556,19 +556,21 @@ public class BrandesKopf
                             southPos = southLookahead;
                             prevNorthPos = nextNorthPos;
                         }
-                }
 
-                // Final scan
-                for (var si = southPos; si < south.Length; si++)
-                {
-                    var sv = south[si];
-                    if (g.Node(sv).Dummy != null)
-                        foreach (var u in g.PredecessorKeys(sv) ?? (IEnumerable<string>)Array.Empty<string>())
-                        {
-                            var uNode = g.Node(u);
-                            if (uNode.Dummy != null && (uNode.Order < prevNorthPos || uNode.Order > prev.Length))
-                                AddConflict(conflicts, u, sv);
-                        }
+                    // Trailing scan — must run on EVERY iteration (matches dagre.js)
+                    for (var si = southPos; si < south.Length; si++)
+                    {
+                        var sv = south[si];
+                        if (g.Node(sv).Dummy != null)
+                            foreach (var u in g.PredecessorKeys(sv) ??
+                                              (IEnumerable<string>)Array.Empty<string>())
+                            {
+                                var uNode = g.Node(u);
+                                if (uNode.Dummy != null &&
+                                    (uNode.Order < prevNorthPos || uNode.Order > prev.Length))
+                                    AddConflict(conflicts, u, sv);
+                            }
+                    }
                 }
 
                 prev = south;

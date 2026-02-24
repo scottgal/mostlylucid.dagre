@@ -660,21 +660,21 @@ internal static class IndexedPosition
                         prevNorthPos = nextNorthPos;
                     }
                 }
-            }
 
-            // Final scan
-            for (var si = southPos; si < south.Length; si++)
-            {
-                var sv = south[si];
-                if (g.NodeDummy[sv] != null)
+                // Trailing scan — runs on EVERY iteration (matches dagre.js)
+                for (var si = southPos; si < south.Length; si++)
                 {
-                    var preds = g.Predecessors(sv);
-                    for (var p = 0; p < preds.Count; p++)
+                    var sv = south[si];
+                    if (g.NodeDummy[sv] != null)
                     {
-                        var u = preds[p];
-                        if (g.NodeDummy[u] != null &&
-                            (g.NodeOrder[u] < prevNorthPos || g.NodeOrder[u] > prev.Length))
-                            AddConflict(conflicts, u, sv);
+                        var spreds = g.Predecessors(sv);
+                        for (var p = 0; p < spreds.Count; p++)
+                        {
+                            var u = spreds[p];
+                            if (g.NodeDummy[u] != null &&
+                                (g.NodeOrder[u] < prevNorthPos || g.NodeOrder[u] > prev.Length))
+                                AddConflict(conflicts, u, sv);
+                        }
                     }
                 }
             }

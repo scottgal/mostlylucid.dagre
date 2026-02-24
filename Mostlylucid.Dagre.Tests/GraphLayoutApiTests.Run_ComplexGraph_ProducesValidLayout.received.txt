@@ -1,0 +1,32 @@
+﻿{
+  decision: {
+    X: 88.75,
+    Y: 300.0,
+    Width: 80.0,
+    Height: 80.0
+  },
+  end: {
+    X: 88.75,
+    Y: 400.0,
+    Width: 80.0,
+    Height: 40.0
+  },
+  proc1: {
+    X: 88.75,
+    Y: 105.0,
+    Width: 100.0,
+    Height: 50.0
+  },
+  proc2: {
+    X: 50.0,
+    Y: 195.0,
+    Width: 100.0,
+    Height: 50.0
+  },
+  start: {
+    X: 88.75,
+    Y: 20.0,
+    Width: 80.0,
+    Height: 40.0
+  }
+}

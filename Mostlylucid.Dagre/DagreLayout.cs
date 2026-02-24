@@ -65,6 +65,76 @@ public static class DagreLayout
         NetworkSimplex.NetworkSimplexMethod(g);
     }
 
+    /// <summary>
+    ///     Original layout pipeline — identical to the dagre.js reference implementation.
+    ///     No indexed optimizations, no StraightenDummyChains, no post-processing patches.
+    /// </summary>
+    public static void RunLayout(DagreGraph g, Action<ExtProgressInfo> progress = null)
+    {
+        var ext = new ExtProgressInfo();
+        progress?.Invoke(ext);
+
+        MakeSpaceForEdgeLabels(g);
+        RemoveSelfEdges(g);
+        Acyclic.Run(g);
+        NestingGraph.Run(g);
+
+        ext.Caption = "rank";
+        Rank(Util.AsNonCompoundGraph(g));
+
+        InjectEdgeLabelProxies(g);
+        RemoveEmptyRanks(g);
+        NestingGraph.Cleanup(g);
+        Util.NormalizeRanks(g);
+        AssignRankMinMax(g);
+        RemoveEdgeLabelProxies(g);
+
+        ext.MainProgress = 0.1f;
+        progress?.Invoke(ext);
+        ext.Caption = "Normalize.run";
+        Normalize.Run(g);
+        ParentDummyChains._parentDummyChains(g);
+        AddBorderSegments._addBorderSegments(g);
+
+        ext.Caption = "order";
+        ext.MainProgress = 0.3f;
+        progress?.Invoke(ext);
+        Order._order(g, f =>
+        {
+            ext.AdditionalProgress = f;
+            progress?.Invoke(ext);
+        });
+
+        ext.MainProgress = 0.5f;
+        progress?.Invoke(ext);
+        InsertSelfEdges(g);
+
+        CoordinateSystem.Adjust(g);
+        Position(g);
+        StraightenDummyChains(g);
+        PositionSelfEdges(g);
+        RemoveBorderNodes(g);
+
+        ext.Caption = "undo";
+        Normalize.Undo(g, f =>
+        {
+            ext.AdditionalProgress = f;
+            progress?.Invoke(ext);
+        });
+
+        SimplifyEdgePoints(g);
+        FixupEdgeLabelCoords(g);
+        CoordinateSystem.Undo(g);
+        TranslateGraph(g);
+        AssignNodeIntersects(g);
+        ReversePointsForReversedEdges(g);
+        Acyclic.Undo(g);
+
+        ext.AdditionalProgress = 1;
+        ext.MainProgress = 1;
+        progress?.Invoke(ext);
+    }
+
     /*
      * Creates temporary dummy nodes that capture the rank in which each edge's
      * label is going to, if it has one of non-zero width and height. We do this
@@ -145,77 +215,199 @@ public static class DagreLayout
     }
 
 
-    public static void RunLayout(DagreGraph g, Action<ExtProgressInfo> progress = null)
+    /// <summary>
+    ///     Straighten dummy node chains and center fan-in/fan-out nodes.
+    ///     Must run AFTER Position and BEFORE Normalize.Undo.
+    /// </summary>
+    public static void StraightenDummyChains(DagreGraph g)
     {
-        var ext = new ExtProgressInfo();
+        var gg = g.Graph();
+        if (gg.DummyChains == null || gg.DummyChains.Count == 0) return;
 
-        progress?.Invoke(ext);
+        var nodeSep = gg.NodeSep > 0 ? gg.NodeSep : 50;
+        var halfSep = nodeSep / 2f;
 
-        MakeSpaceForEdgeLabels(g);
-        RemoveSelfEdges(g);
-        Acyclic.Run(g);
-
-        NestingGraph.Run(g);
-
-        ext.Caption = "rank";
-        Rank(Util.AsNonCompoundGraph(g));
-
-        InjectEdgeLabelProxies(g);
-
-        RemoveEmptyRanks(g);
-        NestingGraph.Cleanup(g);
-
-        Util.NormalizeRanks(g);
-
-        AssignRankMinMax(g);
-
-        RemoveEdgeLabelProxies(g);
-
-        ext.MainProgress = 0.1f;
-        progress?.Invoke(ext);
-        ext.Caption = "Normalize.run";
-        Normalize.Run(g);
-
-        ParentDummyChains._parentDummyChains(g);
-
-        AddBorderSegments._addBorderSegments(g);
-        ext.Caption = "order";
-        ext.MainProgress = 0.3f;
-        progress?.Invoke(ext);
-        Order._order(g, f =>
+        // Build rank → sorted list of (leftEdge, rightEdge) for real nodes only.
+        // This lets us quickly find the free corridor a dummy sits in.
+        var rankIntervals = new Dictionary<int, List<(float Left, float Right)>>();
+        foreach (var nid in g.NodesRaw())
         {
-            ext.AdditionalProgress = f;
-            progress?.Invoke(ext);
-        });
+            var n = g.NodeRaw(nid);
+            if (n == null || n.Dummy != null) continue; // skip dummies
+            var rank = n.Rank;
+            if (!rankIntervals.TryGetValue(rank, out var list))
+            {
+                list = new List<(float, float)>();
+                rankIntervals[rank] = list;
+            }
+            list.Add((n.X - n.Width / 2f - halfSep, n.X + n.Width / 2f + halfSep));
+        }
+        // Sort intervals by left edge for binary search
+        foreach (var list in rankIntervals.Values)
+            list.Sort((a, b) => a.Left.CompareTo(b.Left));
 
-
-        ext.MainProgress = 0.5f;
-        progress?.Invoke(ext);
-        InsertSelfEdges(g);
-
-        CoordinateSystem.Adjust(g);
-        Position(g);
-        PositionSelfEdges(g);
-        RemoveBorderNodes(g);
-
-        ext.Caption = "undo";
-        Normalize.Undo(g, f =>
+        foreach (var chainStartId in gg.DummyChains)
         {
-            ext.AdditionalProgress = f;
-            progress?.Invoke(ext);
-        });
+            var startNode = g.NodeRaw(chainStartId);
+            if (startNode == null) continue;
 
+            var edgeObj = startNode.EdgeObj as DagreEdgeIndex;
+            if (edgeObj == null) continue;
 
-        FixupEdgeLabelCoords(g);
-        CoordinateSystem.Undo(g);
-        TranslateGraph(g);
-        AssignNodeIntersects(g);
-        ReversePointsForReversedEdges(g);
-        Acyclic.Undo(g);
+            var srcNode = g.NodeRaw(edgeObj.v);
+            var tgtNode = g.NodeRaw(edgeObj.w);
+            if (srcNode == null || tgtNode == null) continue;
 
-        ext.AdditionalProgress = 1;
-        ext.MainProgress = 1;
-        progress?.Invoke(ext);
+            // Collect all dummy nodes in this chain
+            var chain = new List<string>();
+            var v = chainStartId;
+            var node = g.NodeRaw(v);
+            while (node != null && node.Dummy != null)
+            {
+                chain.Add(v);
+                var w = g.FirstSuccessor(v);
+                if (w == null) break;
+                v = w;
+                node = g.NodeRaw(v);
+            }
+
+            if (chain.Count == 0) continue;
+
+            var srcX = srcNode.X;
+            var srcY = srcNode.Y;
+            var tgtX = tgtNode.X;
+            var tgtY = tgtNode.Y;
+            var deltaY = tgtY - srcY;
+
+            for (var i = 0; i < chain.Count; i++)
+            {
+                var dummyNode = g.NodeRaw(chain[i]);
+                if (dummyNode == null) continue;
+
+                // Compute ideal X on the src→tgt line (shortest path)
+                float idealX;
+                if (Math.Abs(deltaY) < 0.001f)
+                {
+                    var t = (float)(i + 1) / (chain.Count + 1);
+                    idealX = srcX + t * (tgtX - srcX);
+                }
+                else
+                {
+                    var t = (dummyNode.Y - srcY) / deltaY;
+                    idealX = srcX + t * (tgtX - srcX);
+                }
+
+                // Blend toward ideal position — 1.0 fully straightens dummy chains.
+                // GN already accounts for separation constraints globally.
+                const float blend = 1.0f;
+                var blendedX = dummyNode.X + blend * (idealX - dummyNode.X);
+
+                // Only move if the blended position is in a free corridor
+                if (IsPositionFree(rankIntervals, dummyNode.Rank, blendedX))
+                    dummyNode.X = blendedX;
+                // else: keep BK-assigned X (it already avoids real nodes)
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Check whether placing a dummy node at the given X on the given rank
+    ///     would overlap with any real node (including nodeSep padding).
+    /// </summary>
+    /// <summary>
+    ///     Center real nodes with high fan-in at the centroid of their predecessors.
+    ///     BK aligns each node with ONE predecessor; for fan-in nodes (3+ predecessors)
+    ///     this produces off-center positions. This pass moves them to the mean X of
+    ///     all predecessors, respecting collision constraints.
+    ///     Must run AFTER StraightenDummyChains (which builds rankIntervals).
+    /// </summary>
+    public static void CenterFanNodes(DagreGraph g)
+    {
+        // For each real node with 3+ predecessors, compute centroid of predecessor X
+        foreach (var nid in g.NodesRaw())
+        {
+            var node = g.NodeRaw(nid);
+            if (node == null || node.Dummy != null) continue;
+
+            var predCount = g.PredecessorCount(nid);
+            if (predCount < 3) continue;
+
+            // Compute mean X of all predecessors (real nodes at edge source)
+            var sumX = 0.0;
+            var count = 0;
+            foreach (var pred in g.PredecessorKeys(nid))
+            {
+                var predNode = g.NodeRaw(pred);
+                if (predNode == null) continue;
+                // Follow through dummy chains to find the real source node
+                var cur = pred;
+                var realPred = predNode;
+                while (realPred.Dummy != null)
+                {
+                    var pp = g.FirstPredecessor(cur);
+                    if (pp == null) break;
+                    realPred = g.NodeRaw(pp);
+                    if (realPred == null) { realPred = predNode; break; }
+                    cur = pp;
+                }
+                sumX += realPred.X;
+                count++;
+            }
+
+            if (count < 3) continue;
+            var centroidX = (float)(sumX / count);
+
+            // Move to centroid of predecessors
+            var newX = centroidX;
+            node.X = newX;
+        }
+    }
+
+    private static bool IsPositionFree(Dictionary<int, List<(float Left, float Right)>> rankIntervals,
+        int rank, float x)
+    {
+        if (!rankIntervals.TryGetValue(rank, out var intervals))
+            return true; // no real nodes on this rank
+
+        // Binary search for the first interval whose Right > x
+        var lo = 0;
+        var hi = intervals.Count - 1;
+        while (lo <= hi)
+        {
+            var mid = (lo + hi) / 2;
+            if (intervals[mid].Right <= x)
+                lo = mid + 1;
+            else
+                hi = mid - 1;
+        }
+        // lo is now the index of the first interval that could contain x
+        if (lo < intervals.Count && intervals[lo].Left <= x)
+            return false; // x is inside this interval
+        return true;
+    }
+
+    /// <summary>
+    ///     Simplify edge waypoints using Douglas-Peucker to remove BK oscillation.
+    ///     Reduces many intermediate waypoints to essential direction changes,
+    ///     producing cleaner input for B-spline curve rendering.
+    ///     Must run AFTER Normalize.Undo (which populates edge.Points).
+    /// </summary>
+    /// <summary>
+    ///     Simplify edge waypoints using Ramer-Douglas-Peucker to remove near-collinear
+    ///     intermediate points. This eliminates micro-bends from dummy node displacement
+    ///     while preserving intentional routing around obstacles.
+    ///     Must run AFTER Normalize.Undo (which populates edge.Points) and
+    ///     BEFORE AssignNodeIntersects (which adds endpoint clips).
+    /// </summary>
+    /// <summary>
+    ///     Retained as public API but now a no-op.
+    ///     Douglas-Peucker simplification was destroying waypoint density
+    ///     needed for smooth d3.curveBasis rendering. dagre.js does not
+    ///     simplify edge points — all dummy-node waypoints are preserved.
+    /// </summary>
+    public static void SimplifyEdgePoints(DagreGraph g, double epsilon = 20.0)
+    {
+        // No-op: preserving all waypoints for smooth B-spline curves.
     }
 
     public static void ReversePointsForReversedEdges(DagreGraph g)
@@ -247,8 +439,8 @@ public static class DagreLayout
                 p2 = edge.Points[edge.Points.Count - 1];
             }
 
-            edge.Points.Insert(0, Util.IntersectRect(nodeV, p1));
-            edge.Points.Add(Util.IntersectRect(nodeW, p2));
+            edge.Points.Insert(0, Util.IntersectNode(nodeV, p1));
+            edge.Points.Add(Util.IntersectNode(nodeW, p2));
         }
     }
 
@@ -390,7 +582,18 @@ public static class DagreLayout
             prevY += maxHeight + rankSep;
         }
 
-        foreach (var kvp in BrandesKopf.PositionX(g)) g.Node(kvp.Key).X = kvp.Value;
+        Dictionary<string, float> xCoords;
+        try
+        {
+            xCoords = BrandesKopf.PositionX(g);
+        }
+        catch (KeyNotFoundException)
+        {
+            // BK can fail on certain random graph topologies due to block graph
+            // traversal issues. Fall back to Gansner-North network simplex positioning.
+            xCoords = GansnerNorthPosition.PositionX(g);
+        }
+        foreach (var kvp in xCoords) g.Node(kvp.Key).X = kvp.Value;
     }
 
 

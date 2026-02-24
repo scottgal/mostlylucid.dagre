@@ -206,4 +206,74 @@ public class Util
 
         return new DagrePoint(x + sx, y + sy);
     }
+
+    /// <summary>
+    ///     Shape-aware intersection. Checks the node's "shape" property and
+    ///     dispatches to the appropriate intersection function. Falls back to
+    ///     IntersectRect for unknown or rectangular shapes.
+    /// </summary>
+    internal static DagrePoint IntersectNode(NodeLabel node, DagrePoint point)
+    {
+        if (node.TryGetValue("shape", out var shapeObj) && shapeObj is string shape)
+        {
+            if (shape == "Diamond")
+                return IntersectDiamond(node, point);
+            if (shape is "Circle" or "DoubleCircle")
+                return IntersectEllipse(node, point);
+        }
+        return IntersectRect(node, point);
+    }
+
+    /// <summary>
+    ///     Intersect a ray from the diamond center to the given point with the
+    ///     diamond boundary. The diamond has 4 vertices at the cardinal tips:
+    ///     top (cx, cy-hh), right (cx+hw, cy), bottom (cx, cy+hh), left (cx-hw, cy).
+    /// </summary>
+    internal static DagrePoint IntersectDiamond(NodeLabel node, DagrePoint point)
+    {
+        var cx = node.X;
+        var cy = node.Y;
+        var hw = node.Width / 2f;
+        var hh = node.Height / 2f;
+
+        var dx = point.X - cx;
+        var dy = point.Y - cy;
+        if (dx == 0 && dy == 0)
+            return new DagrePoint(cx, cy - hh); // default: top tip
+
+        // Diamond boundary in normalized coordinates: |dx/hw| + |dy/hh| = 1
+        // Scale the direction to find the intersection
+        var adx = Math.Abs(dx);
+        var ady = Math.Abs(dy);
+        var denom = adx / hw + ady / hh;
+        if (denom < 0.0001)
+            return new DagrePoint(cx, cy - hh);
+
+        var scale = 1.0 / denom;
+        return new DagrePoint(cx + dx * scale, cy + dy * scale);
+    }
+
+    /// <summary>
+    ///     Intersect a ray from the ellipse center to the given point with the
+    ///     ellipse boundary (used for Circle, DoubleCircle).
+    /// </summary>
+    internal static DagrePoint IntersectEllipse(NodeLabel node, DagrePoint point)
+    {
+        var cx = node.X;
+        var cy = node.Y;
+        var rx = node.Width / 2.0;
+        var ry = node.Height / 2.0;
+
+        var dx = point.X - cx;
+        var dy = point.Y - cy;
+        if (dx == 0 && dy == 0)
+            return new DagrePoint(cx, cy - ry);
+
+        // Parametric: intersection at t where (dx*t/rx)^2 + (dy*t/ry)^2 = 1
+        var len = Math.Sqrt(dx * dx / (rx * rx) + dy * dy / (ry * ry));
+        if (len < 0.0001)
+            return new DagrePoint(cx, cy - ry);
+
+        return new DagrePoint(cx + dx / len, cy + dy / len);
+    }
 }

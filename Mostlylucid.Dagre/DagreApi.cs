@@ -1,3 +1,5 @@
+using Mostlylucid.Dagre.Indexed;
+
 namespace Mostlylucid.Dagre;
 
 /// <summary>
@@ -80,7 +82,7 @@ public sealed class GraphLayout
     /// </summary>
     public LayoutResultData Run()
     {
-        DagreLayout.RunLayout(_graph);
+        IndexedDagreLayout.RunLayout(_graph);
 
         var nodeResults = new Dictionary<string, NodeResult>(StringComparer.Ordinal);
         foreach (var v in _graph.Nodes())

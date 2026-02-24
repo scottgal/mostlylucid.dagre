@@ -10,6 +10,7 @@ public class GraphLabel
     public string Ranker { get; set; }
     public string Acyclicer { get; set; }
     public string Align { get; set; }
+
     public float MarginX { get; set; }
     public float MarginY { get; set; }
 

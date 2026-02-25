@@ -28,7 +28,7 @@ internal static class IndexedNetworkSimplex
         var cutValues = new int[sg.EdgeCount];
         InitCutValues(sg, treeEdge, treeParent, cutValues);
 
-        // Step 6: Iterate — leave/enter edge pivoting
+        // Step 6: Iterate - leave/enter edge pivoting
         while (true)
         {
             var leaveIdx = LeaveEdge(sg, treeEdge, cutValues);
@@ -123,7 +123,7 @@ internal static class IndexedNetworkSimplex
     // Use reflection-free helper to set private fields
     private static void SetCounts(IndexedGraph ig, int nodeCount, int edgeCount)
     {
-        // We need access to private fields — use a helper method added to IndexedGraph
+        // We need access to private fields - use a helper method added to IndexedGraph
         ig.SetCounts(nodeCount, edgeCount);
     }
 

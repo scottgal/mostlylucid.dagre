@@ -135,7 +135,7 @@ public class DagreGraph
     }
 
     /// <summary>
-    ///     SetEdge — most common 2-arg form.
+    ///     SetEdge - most common 2-arg form.
     /// </summary>
     public DagreGraph SetEdge(string v, string w)
     {

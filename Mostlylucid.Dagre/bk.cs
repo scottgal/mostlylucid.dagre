@@ -41,7 +41,7 @@ public class BrandesKopf
             foreach (var v in layer)
             {
                 wsBuf.Clear();
-                // Collect neighbors directly from KeyCollection — no array allocation
+                // Collect neighbors directly from KeyCollection - no array allocation
                 var keys = usePredecessors ? g.PredecessorKeys(v) : g.SuccessorKeys(v);
                 if (keys != null)
                     foreach (var k in keys)
@@ -246,7 +246,8 @@ public class BrandesKopf
         return minValue;
     }
 
-    public static Dictionary<string, float> Balance(Dictionary<string, Dictionary<string, float>> xss, string alignDir)
+    public static Dictionary<string, float> Balance(Dictionary<string, Dictionary<string, float>> xss, string alignDir,
+        DagreGraph g = null, float alpha = 0f)
     {
         var result = new Dictionary<string, float>(StringComparer.Ordinal);
         if (alignDir != null)
@@ -273,7 +274,71 @@ public class BrandesKopf
             }
         }
 
+        // Fan-out-aware correction: bias dummy node positions toward the ideal
+        // straight line between their original edge endpoints.
+        if (alpha > 0 && g != null)
+            ApplyFanOutCorrection(result, g, alpha);
+
         return result;
+    }
+
+    /// <summary>
+    /// After standard BK balance, dummy nodes from fan-out edges cluster near the source X.
+    /// This biases each dummy toward the straight-line ideal position between its original
+    /// edge's source and target, then enforces minimum layer separation.
+    /// See: docs/papers/bk-fan-out-aware-coordinate-assignment.md
+    /// </summary>
+    static void ApplyFanOutCorrection(Dictionary<string, float> result, DagreGraph g, float alpha)
+    {
+        // Phase 1: Compute ideal positions and blend
+        foreach (var v in g.Nodes())
+        {
+            var label = g.Node(v);
+            if (label.Dummy != "edge" && label.Dummy != "edge-label") continue;
+
+            var edgeObj = (DagreEdgeIndex)label.EdgeObj;
+            if (edgeObj.v == edgeObj.w) continue; // skip self-edges
+
+            if (!result.TryGetValue(edgeObj.v, out var srcX)) continue;
+            if (!result.TryGetValue(edgeObj.w, out var tgtX)) continue;
+
+            var srcY = g.Node(edgeObj.v).Y;
+            var tgtY = g.Node(edgeObj.w).Y;
+            var deltaY = tgtY - srcY;
+            if (Math.Abs(deltaY) < 0.001f) continue;
+
+            var t = (label.Y - srcY) / deltaY;
+            var idealX = srcX + t * (tgtX - srcX);
+            result[v] = (1 - alpha) * result[v] + alpha * idealX;
+        }
+
+        // Phase 2: Enforce minimum separation per layer
+        var layering = Util.BuildLayerMatrix(g);
+        var graphLabel = g.Graph();
+        var edgeSep = graphLabel.EdgeSep;
+        var nodeSep = graphLabel.NodeSep;
+
+        foreach (var layer in layering)
+        {
+            if (layer.Length <= 1) continue;
+
+            // Sort nodes in this layer by their X position
+            Array.Sort(layer, (a, b) => result[a].CompareTo(result[b]));
+
+            for (var i = 1; i < layer.Length; i++)
+            {
+                var prev = layer[i - 1];
+                var curr = layer[i];
+                var prevLabel = g.Node(prev);
+                var currLabel = g.Node(curr);
+
+                var sep = (prevLabel.Dummy != null || currLabel.Dummy != null) ? edgeSep : nodeSep;
+                var minGap = prevLabel.Width / 2f + sep + currLabel.Width / 2f;
+
+                if (result[curr] - result[prev] < minGap)
+                    result[curr] = result[prev] + minGap;
+            }
+        }
     }
 
     /*
@@ -394,7 +459,8 @@ public class BrandesKopf
         var smallestWidth = FindSmallestWidthAlignment(g, xss);
 
         AlignCoordinates(xss, smallestWidth);
-        return Balance(xss, g.Graph().Align);
+        var gl = g.Graph();
+        return Balance(xss, gl.Align, g, gl.EdgeStraighteningStrength);
     }
 
     public static bool HasConflict(Dictionary<string, Dictionary<string, bool>> conflicts, string v, string w)
@@ -412,7 +478,7 @@ public class BrandesKopf
 
     public static void AddConflict(Dictionary<string, Dictionary<string, bool>> conflicts, string v, string w)
     {
-        if (string.CompareOrdinal(v, w) > 0)
+        if (string.CompareOrdinal(v, w) == 1)
         {
             var tmp = v;
             v = w;
@@ -538,7 +604,7 @@ public class BrandesKopf
                         if (g.PredecessorCount(v) != 0)
                         {
                             nextNorthPos = g.Node(g.FirstPredecessor(v)).Order;
-                            // scan between borders
+                            // scan
                             for (var si = southPos; si < southLookahead; si++)
                             {
                                 var sv = south[si];
@@ -556,21 +622,19 @@ public class BrandesKopf
                             southPos = southLookahead;
                             prevNorthPos = nextNorthPos;
                         }
+                }
 
-                    // Trailing scan — must run on EVERY iteration (matches dagre.js)
-                    for (var si = southPos; si < south.Length; si++)
-                    {
-                        var sv = south[si];
-                        if (g.Node(sv).Dummy != null)
-                            foreach (var u in g.PredecessorKeys(sv) ??
-                                              (IEnumerable<string>)Array.Empty<string>())
-                            {
-                                var uNode = g.Node(u);
-                                if (uNode.Dummy != null &&
-                                    (uNode.Order < prevNorthPos || uNode.Order > prev.Length))
-                                    AddConflict(conflicts, u, sv);
-                            }
-                    }
+                // Final scan
+                for (var si = southPos; si < south.Length; si++)
+                {
+                    var sv = south[si];
+                    if (g.Node(sv).Dummy != null)
+                        foreach (var u in g.PredecessorKeys(sv) ?? (IEnumerable<string>)Array.Empty<string>())
+                        {
+                            var uNode = g.Node(u);
+                            if (uNode.Dummy != null && (uNode.Order < prevNorthPos || uNode.Order > prev.Length))
+                                AddConflict(conflicts, u, sv);
+                        }
                 }
 
                 prev = south;

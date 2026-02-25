@@ -10,9 +10,15 @@ public class GraphLabel
     public string Ranker { get; set; }
     public string Acyclicer { get; set; }
     public string Align { get; set; }
-
     public float MarginX { get; set; }
     public float MarginY { get; set; }
+
+    /// <summary>
+    /// Controls how aggressively dummy-node X-coordinates are biased toward the ideal
+    /// straight line between their original edge endpoints during BK balance.
+    /// Range: 0.0 (pure BK) to 1.0 (force onto straight line). Default 0.0 (off).
+    /// </summary>
+    public float EdgeStraighteningStrength { get; set; }
 
     // Output (set by layout)
     public double Width { get; set; }

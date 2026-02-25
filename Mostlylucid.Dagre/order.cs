@@ -222,7 +222,7 @@ public class Order
                 rankList.Add(v);
             }
 
-            // Sort keys and flatten — avoid LINQ OrderBy in hot path
+            // Sort keys and flatten - avoid LINQ OrderBy in hot path
             var sortedKeys = new List<int>(dicc.Keys);
             sortedKeys.Sort();
             foreach (var key in sortedKeys)

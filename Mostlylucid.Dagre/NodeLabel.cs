@@ -17,10 +17,10 @@ public class NodeLabel : IDictionary<string, object>
     private const int F_Root = 18, F_IsGroup = 19, F_NestingRoot = 20;
     private const int F_EdgeObj = 21, F_EdgeLabel = 22, F_E = 23, F_Label = 24;
     private const int F_LabelRank = 25, F_LabelPos = 26;
-    private const int F_SelfEdges = 27, F_Source = 28, F_NestingEdge = 29;
+    private const int F_SelfEdges = 27, F_Source = 28, F_NestingEdge = 29, F_Shape = 30;
     private Dictionary<string, string> _borderLeft, _borderRight;
 
-    // Dummy/border info — auto-set flags
+    // Dummy/border info - auto-set flags
     private string _dummy, _borderType, _borderTop, _borderBottom;
 
     // Edge-related (for dummy nodes representing edges) — auto-set flags
@@ -51,6 +51,7 @@ public class NodeLabel : IDictionary<string, object>
 
     // Misc — auto-set flags
     private object _source;
+    private string _shape;
 
     // Layout coordinates — auto-set flags on write so ContainsKey works
     private float _x, _y, _width, _height;
@@ -356,6 +357,21 @@ public class NodeLabel : IDictionary<string, object>
         }
     }
 
+    /// <summary>
+    /// Node shape hint used for edge intersection calculation.
+    /// Common values: "rect" (default), "diamond", "circle", "ellipse".
+    /// When set, AssignNodeIntersects uses shape-aware clipping instead of IntersectRect for all nodes.
+    /// </summary>
+    public string Shape
+    {
+        get => _shape;
+        set
+        {
+            _shape = value;
+            Set(F_Shape);
+        }
+    }
+
     public object this[string key]
     {
         get => TryGetTyped(key, out var val) ? val :
@@ -477,6 +493,9 @@ public class NodeLabel : IDictionary<string, object>
             case "nestingEdge":
                 Unset(F_NestingEdge);
                 return true;
+            case "shape":
+                Unset(F_Shape);
+                return true;
             default:
                 return _overflow != null && _overflow.Remove(key);
         }
@@ -517,6 +536,7 @@ public class NodeLabel : IDictionary<string, object>
             if (IsSet(F_SelfEdges)) keys.Add("selfEdges");
             if (IsSet(F_Source)) keys.Add("source");
             if (IsSet(F_NestingEdge)) keys.Add("nestingEdge");
+            if (IsSet(F_Shape)) keys.Add("shape");
             if (_overflow != null) keys.AddRange(_overflow.Keys);
             return keys;
         }
@@ -697,6 +717,9 @@ public class NodeLabel : IDictionary<string, object>
             case "nestingEdge":
                 value = NestingEdge;
                 return IsSet(F_NestingEdge);
+            case "shape":
+                value = Shape;
+                return IsSet(F_Shape);
             default:
                 value = null;
                 return false;
@@ -737,6 +760,7 @@ public class NodeLabel : IDictionary<string, object>
             case "selfEdges": SelfEdges = (List<SelfEdgeInfo>)value; break;
             case "source": Source = value; break;
             case "nestingEdge": NestingEdge = Convert.ToBoolean(value); break;
+            case "shape": Shape = value as string ?? value?.ToString(); break;
             default:
                 if (_overflow == null)
                     _overflow = new Dictionary<string, object>();

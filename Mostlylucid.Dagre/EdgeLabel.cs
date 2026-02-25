@@ -13,10 +13,10 @@ public class EdgeLabel : IDictionary<string, object>
     private const int F_ForwardName = 9, F_Reversed = 10, F_Cutvalue = 11;
     private const int F_LabelRank = 12, F_NestingEdge = 13, F_Source = 14;
 
-    // Network simplex — auto-set flag
+    // Network simplex - auto-set flag
     private int _cutvalue;
 
-    // Acyclic module — auto-set flags
+    // Acyclic module - auto-set flags
     private string _forwardName;
     private float _labelOffset;
     private string _labelPos;

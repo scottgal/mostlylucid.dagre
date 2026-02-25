@@ -370,22 +370,6 @@ internal sealed class IndexedGraph
     }
 
     /// <summary>
-    ///     Read X/Y coordinates from DagreGraph into indexed arrays.
-    /// </summary>
-    public void ReadPositionsFrom(DagreGraph g)
-    {
-        for (var i = 0; i < NodeCount; i++)
-        {
-            var id = NodeIdByIndex[i];
-            if (id == null) continue;
-            var nl = g.NodeRaw(id);
-            if (nl == null) continue;
-            NodeX[i] = nl.X;
-            NodeY[i] = nl.Y;
-        }
-    }
-
-    /// <summary>
     ///     Rebuild flat adjacency lists from EdgeSource/EdgeTarget arrays.
     ///     Call after batch adding nodes/edges.
     /// </summary>
@@ -659,7 +643,7 @@ internal sealed class IndexedGraph
 
     /// <summary>
     ///     Add a dummy node. Returns the new node index.
-    ///     Does NOT rebuild adjacency — call RebuildAdjacency() after all mutations.
+    ///     Does NOT rebuild adjacency - call RebuildAdjacency() after all mutations.
     /// </summary>
     public int AddNode(float width, float height, int rank, string dummy, string id = null)
     {

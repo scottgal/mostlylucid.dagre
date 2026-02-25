@@ -16,7 +16,7 @@ public static class IndexedDagreLayout
 
     /// <summary>
     ///     Run layout using indexed algorithms for hot paths.
-    ///     The DagreGraph is mutated in place — same contract as DagreLayout.RunLayout.
+    ///     The DagreGraph is mutated in place - same contract as DagreLayout.RunLayout.
     /// </summary>
     public static void RunLayout(DagreGraph g, Action<ExtProgressInfo> progress = null)
     {
@@ -24,7 +24,7 @@ public static class IndexedDagreLayout
         progress?.Invoke(ext);
         var sw = TraceTiming ? Stopwatch.StartNew() : null;
 
-        // Phase 1: Setup (reuse original — not hot paths)
+        // Phase 1: Setup (reuse original - not hot paths)
         DagreLayout.MakeSpaceForEdgeLabels(g);
         DagreLayout.RemoveSelfEdges(g);
         Acyclic.Run(g);
@@ -104,8 +104,6 @@ public static class IndexedDagreLayout
         CoordinateSystem.Adjust(g);
         DagreLayout.Position(g);
         Trace(sw, "  DagreLayout.Position (compound)");
-        DagreLayout.StraightenDummyChains(g);
-        Trace(sw, "  StraightenDummyChains (compound)");
 
         // Phase 6: Finalization
         DagreLayout.PositionSelfEdges(g);
@@ -129,33 +127,50 @@ public static class IndexedDagreLayout
     private static void RunIndexedLayout(DagreGraph g, ExtProgressInfo ext,
         Action<ExtProgressInfo> progress, Stopwatch sw)
     {
-        // Phase 4: Ordering — use original Order (has constraint graph + resolveConflicts
-        // that IndexedOrder lacks, producing correct node orderings matching dagre.js)
-        ext.Caption = "order";
+        // Phase 4: Ordering — INDEXED
+        ext.Caption = "order (indexed)";
         ext.MainProgress = 0.3f;
         progress?.Invoke(ext);
 
-        Order._order(g);
-        Trace(sw, "  Order._order");
+        var nodeCountBeforeSelfEdges = g.NodeCount();
+
+        var ig2 = IndexedGraph.FromDagreGraph(g);
+        Trace(sw, "  FromDagreGraph (order)");
+        IndexedOrder.Run(ig2);
+        Trace(sw, "  IndexedOrder");
+        ig2.WriteOrdersTo(g);
 
         ext.MainProgress = 0.5f;
         progress?.Invoke(ext);
         DagreLayout.InsertSelfEdges(g);
 
-        // Phase 5: Position (Brandes-Kopf via DagreLayout.Position)
-        ext.Caption = "position";
+        // Phase 5: Position — INDEXED
+        ext.Caption = "position (indexed)";
+        var nodeCountAfterSelfEdges = g.NodeCount();
+        var rankDir = g.Graph().RankDir?.ToLower() ?? "tb";
+        var isLrRl = rankDir == "lr" || rankDir == "rl";
 
         CoordinateSystem.Adjust(g);
-        DagreLayout.Position(g);
-        Trace(sw, "  DagreLayout.Position");
 
-        // Build igPos for IndexedNormalize.Undo
-        var igPos = IndexedGraph.FromDagreGraphNonCompound(g);
-        igPos.ReadPositionsFrom(g);
-
-        // Straighten dummy chains (matches DagreLayout.RunLayout order)
-        DagreLayout.StraightenDummyChains(g);
-        Trace(sw, "  StraightenDummyChains");
+        IndexedGraph igPos;
+        if (nodeCountAfterSelfEdges == nodeCountBeforeSelfEdges)
+        {
+            if (isLrRl)
+                ig2.SwapWidthHeight();
+            IndexedPosition.Run(ig2);
+            Trace(sw, "  IndexedPosition (reused)");
+            ig2.WritePositionsTo(g);
+            igPos = ig2;
+        }
+        else
+        {
+            var ig3 = IndexedGraph.FromDagreGraphNonCompound(g);
+            Trace(sw, "  FromDagreGraphNonCompound (position)");
+            IndexedPosition.Run(ig3);
+            Trace(sw, "  IndexedPosition");
+            ig3.WritePositionsTo(g);
+            igPos = ig3;
+        }
 
         // Phase 6: Finalization
         DagreLayout.PositionSelfEdges(g);
@@ -176,7 +191,6 @@ public static class IndexedDagreLayout
     private static void FinishLayout(DagreGraph g, ExtProgressInfo ext,
         Action<ExtProgressInfo> progress, Stopwatch sw)
     {
-        DagreLayout.SimplifyEdgePoints(g);
         DagreLayout.FixupEdgeLabelCoords(g);
         CoordinateSystem.Undo(g);
         DagreLayout.TranslateGraph(g);

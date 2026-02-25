@@ -43,7 +43,7 @@ public class NetworkSimplex
     public static void InitCutValues(DagreGraph t, DagreGraph g)
     {
         var vs = Postorder(t, t.NodesRaw());
-        // Skip the last element (root) — iterate up to Length-1
+        // Skip the last element (root) - iterate up to Length-1
         for (var i = 0; i < vs.Length - 1; i++) AssignCutValue(t, g, vs[i]);
     }
 
@@ -354,52 +354,35 @@ public class GraphLib
 
     public static void DoDfs(DagreGraph g, string v, bool postorder, HashSet<string> visited, List<string> acc)
     {
-        // Iterative DFS to avoid stack overflow on large graphs
-        // (e.g. GansnerNorth auxiliary graphs with thousands of nodes)
-        var stack = new Stack<(string node, bool expanded)>();
-        stack.Push((v, false));
+        if (!visited.Add(v)) return;
 
-        while (stack.Count > 0)
+        if (!postorder) acc.Add(v);
+
+        // Get neighbors without per-call array allocation via KeyCollection iteration
+        if (g._isDirected)
         {
-            var (node, expanded) = stack.Pop();
-
-            if (expanded)
+            var keys = g.SuccessorKeys(v);
+            if (keys != null)
             {
-                // Second visit — postorder emit
-                acc.Add(node);
-                continue;
+                // Sort is needed for deterministic ordering — collect to temp list
+                var sorted = new List<string>(keys);
+                sorted.Sort(StringComparer.Ordinal);
+                foreach (var w in sorted)
+                    DoDfs(g, w, postorder, visited, acc);
             }
-
-            if (!visited.Add(node)) continue;
-
-            if (postorder)
-            {
-                // Push a marker to emit this node after children are processed
-                stack.Push((node, true));
-            }
-            else
-            {
-                acc.Add(node);
-            }
-
-            // Get neighbors and push in reverse sorted order so first neighbor is processed first
-            string[]? neighbors;
-            if (g._isDirected)
-            {
-                var keys = g.SuccessorKeys(node);
-                if (keys == null) continue;
-                neighbors = [.. keys];
-            }
-            else
-            {
-                neighbors = g.Neighbors(node);
-                if (neighbors == null) continue;
-            }
-
-            Array.Sort(neighbors, StringComparer.Ordinal);
-            // Push in reverse order so sorted-first is on top of stack
-            for (var i = neighbors.Length - 1; i >= 0; i--)
-                stack.Push((neighbors[i], false));
         }
+        else
+        {
+            // Undirected — use preds + sucs merged
+            var neighbors = g.Neighbors(v);
+            if (neighbors != null)
+            {
+                Array.Sort(neighbors, StringComparer.Ordinal);
+                foreach (var w in neighbors)
+                    DoDfs(g, w, postorder, visited, acc);
+            }
+        }
+
+        if (postorder) acc.Add(v);
     }
 }

@@ -42,187 +42,171 @@ public class Acyclic
         }
     }
 
+    /// <summary>
+    /// Greedy heuristic for finding a feedback arc set (FAS) - a set of edges whose removal
+    /// makes the graph acyclic. Based on the algorithm from:
+    /// P. Eades, X. Lin, and W.F. Smyth, "A fast and effective heuristic for the feedback arc set problem."
+    /// Information Processing Letters, 47(6):319–323, 1993.
+    ///
+    /// The algorithm repeatedly removes sinks (nodes with no outgoing edges) and sources
+    /// (nodes with no incoming edges), appending/prepending them to a sequence. Then it removes
+    /// the node with the largest (outWeight - inWeight) delta. Edges that go "backwards" in
+    /// the resulting sequence form the feedback arc set.
+    /// </summary>
     public static DagreEdgeIndex[] GreedyFAS(DagreGraph g, Func<DagreEdgeIndex, int> wf)
     {
-        var nodes = g.NodesRaw();
-        if (nodes.Length <= 1) return [];
+        if (g.NodeCount() <= 0)
+            return Array.Empty<DagreEdgeIndex>();
 
-        // Build simplified graph with aggregated edge weights and in/out degree tracking.
-        // Track both weighted sums (for delta calculation) and structural edge counts
-        // (for sink/source classification). Weight-0 edges must NOT make a node appear
-        // as a phantom sink/source — only truly disconnected nodes qualify.
-        var fasGraph = new DagreGraph(false);
-        int maxIn = 0, maxOut = 0;
+        // Build a simple adjacency representation with weights
+        var nodes = new Dictionary<string, FasEntry>(StringComparer.Ordinal);
 
-        foreach (var v in nodes)
-            fasGraph.SetNode(v, new NodeLabel
-            {
-                ["v"] = v, ["in"] = 0f, ["out"] = 0f,
-                ["inEdges"] = 0, ["outEdges"] = 0
-            });
+        foreach (var v in g.NodesRaw())
+        {
+            nodes[v] = new FasEntry { V = v };
+        }
 
         foreach (var e in g.Edges())
         {
-            var existing = fasGraph.Edge(e.v, e.w);
-            var prevWeight = existing?.Weight ?? 0;
-            var isNewEdge = existing == null;
             var weight = wf(e);
-            var edgeWeight = prevWeight + weight;
-            fasGraph.SetEdge(e.v, e.w, new EdgeLabel { Weight = edgeWeight });
-            var vNode = fasGraph.Node(e.v);
-            var wNode = fasGraph.Node(e.w);
-            vNode["out"] = (float)vNode["out"] + weight;
-            wNode["in"] = (float)wNode["in"] + weight;
-            if (isNewEdge)
-            {
-                vNode["outEdges"] = (int)vNode["outEdges"] + 1;
-                wNode["inEdges"] = (int)wNode["inEdges"] + 1;
-            }
-            maxOut = Math.Max(maxOut, (int)(float)vNode["out"]);
-            maxIn = Math.Max(maxIn, (int)(float)wNode["in"]);
+            var entry = nodes[e.v];
+            entry.Out += weight;
+            var wEntry = nodes[e.w];
+            wEntry.In += weight;
         }
 
-        // Bucket sort: sinks at index 0, sources at last index, others by (out-in) delta
-        var bucketCount = maxOut + maxIn + 3;
-        var zeroIdx = maxIn + 1;
-        var buckets = new List<NodeLabel>[bucketCount];
-        for (var i = 0; i < bucketCount; i++) buckets[i] = [];
+        // S_l: sequence built from left (sources), S_r: sequence built from right (sinks)
+        var sL = new List<string>();
+        var sR = new List<string>();
+        var remaining = new HashSet<string>(nodes.Keys, StringComparer.Ordinal);
 
-        foreach (var v in fasGraph.NodesRaw())
-            AssignBucket(buckets, zeroIdx, fasGraph.Node(v));
-
-        var results = new List<DagreEdgeIndex>();
-
-        while (fasGraph.NodesRaw().Length > 0)
+        // Iteratively remove sources and sinks, then the max-delta node
+        while (remaining.Count > 0)
         {
-            // Drain sinks (no outgoing edges)
-            while (buckets[0].Count > 0)
-                RemoveNodeFromFas(fasGraph, buckets, zeroIdx, buckets[0][^1], false, results);
-
-            // Drain sources (no incoming edges)
-            while (buckets[^1].Count > 0)
-                RemoveNodeFromFas(fasGraph, buckets, zeroIdx, buckets[^1][^1], false, results);
-
-            if (fasGraph.NodesRaw().Length > 0)
+            // Remove all sinks
+            bool changed;
+            do
             {
-                // Pick node with highest (out - in) delta; its in-edges go into FAS.
-                // Among nodes with the same delta, prefer the one with lowest in-weight
-                // so that the cheapest edges are reversed (e.g. weight-0 dotted edges).
-                for (var i = bucketCount - 2; i > 0; i--)
+                changed = false;
+                var toRemove = new List<string>();
+                foreach (var v in remaining)
                 {
-                    if (buckets[i].Count > 0)
+                    var entry = nodes[v];
+                    if (entry.Out == 0)
                     {
-                        var best = buckets[i][^1];
-                        if (buckets[i].Count > 1)
-                        {
-                            var bestInW = (float)best["in"];
-                            for (var j = buckets[i].Count - 2; j >= 0; j--)
-                            {
-                                var candInW = (float)buckets[i][j]["in"];
-                                if (candInW < bestInW)
-                                {
-                                    best = buckets[i][j];
-                                    bestInW = candInW;
-                                }
-                            }
-                        }
-                        RemoveNodeFromFas(fasGraph, buckets, zeroIdx, best, true, results);
-                        break;
+                        sR.Add(v);
+                        toRemove.Add(v);
+                        changed = true;
                     }
                 }
-            }
-        }
+                foreach (var v in toRemove)
+                {
+                    remaining.Remove(v);
+                    // Update weights: removing a sink reduces outWeight of predecessors
+                    foreach (var e in g.InEdges(v))
+                    {
+                        if (remaining.Contains(e.v))
+                            nodes[e.v].Out -= wf(e);
+                    }
+                }
+            } while (changed);
 
-        // Map simplified edges back to original multi-edges
-        return ExpandFasEdges(g, results);
-    }
-
-    static void AssignBucket(List<NodeLabel>[] buckets, int zeroIdx, NodeLabel entry)
-    {
-        // Use structural edge counts for sink/source: a node with weight-0 outgoing edges
-        // still has structural edges and is NOT a true sink. Only nodes with zero structural
-        // edges qualify, preventing weight-0 edges from creating phantom sinks/sources.
-        var outEdges = (int)entry["outEdges"];
-        var inEdges = (int)entry["inEdges"];
-        var outW = (float)entry["out"];
-        var inW = (float)entry["in"];
-        int idx;
-        if (outEdges == 0)
-            idx = 0; // true sink: no structural outgoing edges
-        else if (inEdges == 0)
-            idx = buckets.Length - 1; // true source: no structural incoming edges
-        else
-            idx = Math.Clamp((int)(outW - inW) + zeroIdx, 1, buckets.Length - 2);
-        entry["in_list"] = buckets[idx];
-        buckets[idx].Add(entry);
-    }
-
-    static void RemoveNodeFromFas(DagreGraph fasGraph, List<NodeLabel>[] buckets, int zeroIdx,
-        NodeLabel entry, bool collectPredEdges, List<DagreEdgeIndex> results)
-    {
-        var v = (string)entry["v"];
-
-        // Collect predecessor edges as feedback arc set entries
-        if (collectPredEdges)
-        {
-            foreach (var e in fasGraph.InEdges(v))
-                results.Add(new DagreEdgeIndex { v = e.v, w = e.w, name = e.name });
-        }
-
-        // Update neighbors' in/out weights and structural edge counts before removing
-        foreach (var e in fasGraph.InEdges(v))
-        {
-            var uEntry = fasGraph.Node(e.v);
-            if (uEntry == null) continue;
-            var edgeWeight = fasGraph.Edge(e)?.Weight ?? 0;
-            uEntry["out"] = (float)uEntry["out"] - edgeWeight;
-            uEntry["outEdges"] = (int)uEntry["outEdges"] - 1;
-            ReassignBucket(buckets, zeroIdx, uEntry);
-        }
-
-        foreach (var e in fasGraph.OutEdges(v))
-        {
-            var wEntry = fasGraph.Node(e.w);
-            if (wEntry == null) continue;
-            var edgeWeight = fasGraph.Edge(e)?.Weight ?? 0;
-            wEntry["in"] = (float)wEntry["in"] - edgeWeight;
-            wEntry["inEdges"] = (int)wEntry["inEdges"] - 1;
-            ReassignBucket(buckets, zeroIdx, wEntry);
-        }
-
-        // Remove from current bucket and from the graph
-        if (entry["in_list"] is List<NodeLabel> currentList)
-            currentList.Remove(entry);
-
-        fasGraph.RemoveNode(v);
-    }
-
-    static void ReassignBucket(List<NodeLabel>[] buckets, int zeroIdx, NodeLabel entry)
-    {
-        if (entry["in_list"] is List<NodeLabel> oldList)
-            oldList.Remove(entry);
-        AssignBucket(buckets, zeroIdx, entry);
-    }
-
-    static DagreEdgeIndex[] ExpandFasEdges(DagreGraph g, List<DagreEdgeIndex> fasEdges)
-    {
-        var result = new List<DagreEdgeIndex>();
-        foreach (var e in fasEdges)
-        {
-            foreach (var oe in g.OutEdges(e.v))
+            // Remove all sources
+            do
             {
-                if (oe.w == e.w)
-                    result.Add(oe);
+                changed = false;
+                var toRemove = new List<string>();
+                foreach (var v in remaining)
+                {
+                    var entry = nodes[v];
+                    if (entry.In == 0)
+                    {
+                        sL.Add(v);
+                        toRemove.Add(v);
+                        changed = true;
+                    }
+                }
+                foreach (var v in toRemove)
+                {
+                    remaining.Remove(v);
+                    // Update weights: removing a source reduces inWeight of successors
+                    foreach (var e in g.OutEdges(v))
+                    {
+                        if (remaining.Contains(e.w))
+                            nodes[e.w].In -= wf(e);
+                    }
+                }
+            } while (changed);
+
+            if (remaining.Count == 0)
+                break;
+
+            // Pick the node with maximum (out - in) delta
+            string bestV = null;
+            var bestDelta = int.MinValue;
+            foreach (var v in remaining)
+            {
+                var entry = nodes[v];
+                var delta = entry.Out - entry.In;
+                if (delta > bestDelta)
+                {
+                    bestDelta = delta;
+                    bestV = v;
+                }
+            }
+
+            sL.Add(bestV);
+            remaining.Remove(bestV);
+
+            // Update neighbors
+            foreach (var e in g.OutEdges(bestV))
+            {
+                if (remaining.Contains(e.w))
+                    nodes[e.w].In -= wf(e);
+            }
+            foreach (var e in g.InEdges(bestV))
+            {
+                if (remaining.Contains(e.v))
+                    nodes[e.v].Out -= wf(e);
             }
         }
-        return result.ToArray();
+
+        // Build final sequence: sL + reversed(sR)
+        sR.Reverse();
+        sL.AddRange(sR);
+
+        // Assign positions in the sequence
+        var position = new Dictionary<string, int>(StringComparer.Ordinal);
+        for (var i = 0; i < sL.Count; i++)
+            position[sL[i]] = i;
+
+        // Edges that go backwards in the sequence form the FAS
+        var fas = new List<DagreEdgeIndex>();
+        foreach (var e in g.Edges())
+        {
+            if (position.TryGetValue(e.v, out var pv) &&
+                position.TryGetValue(e.w, out var pw) &&
+                pv >= pw)
+            {
+                fas.Add(e);
+            }
+        }
+
+        return fas.ToArray();
+    }
+
+    private class FasEntry
+    {
+        public string V;
+        public int In;
+        public int Out;
     }
 
     public static DagreEdgeIndex[] DfsFAS(DagreGraph g)
     {
         var visited = new HashSet<string>(StringComparer.Ordinal);
         var fas = new List<DagreEdgeIndex>();
-        // HashSet for O(1) cycle detection — need Contains + Remove semantics
+        // HashSet for O(1) cycle detection - need Contains + Remove semantics
         var stack = new HashSet<string>(StringComparer.Ordinal);
 
         void Dfs(string v)

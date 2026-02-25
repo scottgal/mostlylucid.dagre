@@ -97,7 +97,7 @@ public class DagreInputGraph
     public void Layout(Action<ExtProgressInfo> progress = null)
     {
         check();
-        var dg = new DagreGraph(true) { _isMultigraph = true };
+        var dg = new DagreGraph(true);
 
         var list1 = nodes.Where(z => z is DagreInputGroup || z.Childs.Count > 0 || z.Parents.Count > 0).ToList();
 

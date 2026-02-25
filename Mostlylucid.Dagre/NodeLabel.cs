@@ -24,7 +24,10 @@ public class NodeLabel : IDictionary<string, object>
     private string _dummy, _borderType, _borderTop, _borderBottom;
 
     // Edge-related (for dummy nodes representing edges) — auto-set flags
-    private object _edgeObj, _edgeLabel, _e, _label;
+    private DagreEdgeIndex _edgeObj;
+    private EdgeLabel _edgeLabel;
+    private DagreEdgeIndex _e;
+    private EdgeLabel _label;
     private bool _isGroup;
     private string _labelPos;
     private int _labelRank;
@@ -267,7 +270,7 @@ public class NodeLabel : IDictionary<string, object>
         }
     }
 
-    public object EdgeObj
+    public DagreEdgeIndex EdgeObj
     {
         get => _edgeObj;
         set
@@ -277,7 +280,7 @@ public class NodeLabel : IDictionary<string, object>
         }
     }
 
-    public object EdgeLabel
+    public EdgeLabel EdgeLabel
     {
         get => _edgeLabel;
         set
@@ -287,7 +290,7 @@ public class NodeLabel : IDictionary<string, object>
         }
     }
 
-    public object E
+    public DagreEdgeIndex E
     {
         get => _e;
         set
@@ -297,7 +300,7 @@ public class NodeLabel : IDictionary<string, object>
         }
     }
 
-    public object Label
+    public EdgeLabel Label
     {
         get => _label;
         set
@@ -751,10 +754,10 @@ public class NodeLabel : IDictionary<string, object>
             case "root": Root = value as string ?? value?.ToString(); break;
             case "isGroup": IsGroup = Convert.ToBoolean(value); break;
             case "nestingRoot": NestingRoot = value as string ?? value?.ToString(); break;
-            case "edgeObj": EdgeObj = value; break;
-            case "edgeLabel": EdgeLabel = value; break;
-            case "e": E = value; break;
-            case "label": Label = value; break;
+            case "edgeObj": EdgeObj = (DagreEdgeIndex)value; break;
+            case "edgeLabel": EdgeLabel = (EdgeLabel)value; break;
+            case "e": E = (DagreEdgeIndex)value; break;
+            case "label": Label = (EdgeLabel)value; break;
             case "labelRank": LabelRank = Convert.ToInt32(value); break;
             case "labelpos": LabelPos = value as string ?? value?.ToString(); break;
             case "selfEdges": SelfEdges = (List<SelfEdgeInfo>)value; break;

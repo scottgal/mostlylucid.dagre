@@ -5,7 +5,7 @@ public static class ParentDummyChains
     private static void dummyChainIteration(DagreGraph g, string v, Dictionary<string, PostorderEntry> postorderNums)
     {
         var node = g.NodeRaw(v);
-        var edgeObj = (DagreEdgeIndex)node.EdgeObj;
+        var edgeObj = node.EdgeObj;
         var pathData = findPath(g, postorderNums, edgeObj.v, edgeObj.w);
         var path = pathData.Path;
         var lca = pathData.Lca;

@@ -52,9 +52,9 @@ public class Normalize
                     i++;
                     var v = chainStart;
                     var node = g.Node(v);
-                    var origLabel = (EdgeLabel)node.EdgeLabel;
+                    var origLabel = node.EdgeLabel;
                     string w = null;
-                    var edgeObj = (DagreEdgeIndex)node.EdgeObj;
+                    var edgeObj = node.EdgeObj;
                     g.SetEdge(edgeObj.v, edgeObj.w, origLabel, edgeObj.name);
                     while (node.Dummy != null)
                     {
@@ -84,7 +84,7 @@ public class Normalize
 
     public static void NormalizeEdge(DagreGraph g, DagreEdgeIndex e)
     {
-        var v = (object)e.v;
+        var v = e.v;
         var vRank = g.NodeRaw(e.v).Rank;
         var w = e.w;
         var wRank = g.NodeRaw(w).Rank;
@@ -94,7 +94,7 @@ public class Normalize
         if (wRank != vRank + 1)
         {
             g.RemoveEdge(e);
-            object dummy = null;
+            string dummy = null;
             ++vRank;
             var edgeWeight = edgeLabel.Weight;
             for (var i = 0; vRank < wRank; ++i, ++vRank)
@@ -107,10 +107,9 @@ public class Normalize
                 attrs.Rank = vRank;
 
                 // Use fast dummy node creation (skips existence check, uses small-capacity dicts)
-                var dummyId = Util.UniqueId("_d");
+                dummy = Util.UniqueId("_d");
                 attrs.Dummy = "edge";
-                g.SetNodeDummy(dummyId, attrs);
-                dummy = dummyId;
+                g.SetNodeDummy(dummy, attrs);
 
                 if (labelRank != 0 && vRank == labelRank)
                 {
@@ -123,15 +122,15 @@ public class Normalize
                 var jo1 = new EdgeLabel();
                 jo1.Weight = edgeWeight;
 
-                g.SetEdgeFast((string)v, (string)dummy, jo1, name);
-                if (i == 0) g.Graph().DummyChains.Add((string)dummy);
+                g.SetEdgeFast(v, dummy, jo1, name);
+                if (i == 0) g.Graph().DummyChains.Add(dummy);
                 v = dummy;
             }
 
             var jo2 = new EdgeLabel();
             jo2.Weight = edgeWeight;
 
-            g.SetEdgeFast((string)v, w, jo2, name);
+            g.SetEdgeFast(v, w, jo2, name);
         }
     }
 }

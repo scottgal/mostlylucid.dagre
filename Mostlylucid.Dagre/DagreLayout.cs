@@ -91,7 +91,7 @@ public static class DagreLayout
 
     public static void RemoveEmptyRanks(DagreGraph g)
     {
-        var layers = new Dictionary<int, object>();
+        var layers = new Dictionary<int, List<string>>();
 
         // Ranks may not start at 0, so we need to offset them
         var allNodes = g.NodesRaw();
@@ -112,16 +112,14 @@ public static class DagreLayout
             {
                 var nodeLabel = g.NodeRaw(v);
                 if (!nodeLabel.ContainsKey("rank")) continue;
-                var rank = -offset;
-
-                rank += nodeLabel.Rank;
+                var rank = -offset + nodeLabel.Rank;
                 if (!layers.TryGetValue(rank, out var layer))
                 {
                     layer = new List<string>();
                     layers.Add(rank, layer);
                 }
 
-                ((List<string>)layer).Add(v);
+                layer.Add(v);
             }
 
         if (layers.Count > 0 && g.Graph().NodeRankFactor > 0)
@@ -136,11 +134,8 @@ public static class DagreLayout
                 if (!layers.ContainsKey(i) && i % nodeRankFactor != 0)
                     --delta;
                 else if (delta != 0)
-                    if (layers.TryGetValue(i, out var layerVals))
-                    {
-                        var vs = (List<string>)layerVals;
+                    if (layers.TryGetValue(i, out var vs))
                         foreach (var v in vs) g.NodeRaw(v).Rank += delta;
-                    }
         }
     }
 
@@ -345,13 +340,13 @@ public static class DagreLayout
             var node = g.Node(v);
             if (node.Dummy == "selfedge")
             {
-                var edgeObj = (DagreEdgeIndex)node.E;
+                var edgeObj = node.E;
                 var selfNode = g.Node(edgeObj.v);
                 var x = selfNode.X + selfNode.Width / 2f;
                 var y = selfNode.Y;
                 var dx = node.X - x;
                 var dy = selfNode.Height / 2f;
-                var label = (EdgeLabel)node.Label;
+                var label = node.Label;
                 g.SetEdge(edgeObj.v, edgeObj.w, label, edgeObj.name);
                 g.RemoveNode(v);
                 label.Points = new List<DagrePoint>
@@ -472,7 +467,7 @@ public static class DagreLayout
                 var node = g.NodeRaw(v);
                 if (node.Dummy == "edge-proxy")
                 {
-                    g.EdgeRaw((DagreEdgeIndex)node.E).LabelRank = node.Rank;
+                    g.EdgeRaw(node.E).LabelRank = node.Rank;
                     g.RemoveNode(v);
                 }
             }

@@ -296,7 +296,7 @@ public class BrandesKopf
             var label = g.Node(v);
             if (label.Dummy != "edge" && label.Dummy != "edge-label") continue;
 
-            var edgeObj = (DagreEdgeIndex)label.EdgeObj;
+            var edgeObj = label.EdgeObj;
             if (edgeObj.v == edgeObj.w) continue; // skip self-edges
 
             if (!result.TryGetValue(edgeObj.v, out var srcX)) continue;

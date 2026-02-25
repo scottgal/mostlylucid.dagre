@@ -30,8 +30,8 @@ internal static class IndexedNormalize
             var startNode = g.NodeRaw(chainStartId);
             if (startNode == null) continue;
 
-            var origLabel = (EdgeLabel)startNode.EdgeLabel;
-            var edgeObj = (DagreEdgeIndex)startNode.EdgeObj;
+            var origLabel = startNode.EdgeLabel;
+            var edgeObj = startNode.EdgeObj;
             if (origLabel == null || edgeObj == null) continue;
 
             // Restore original edge in DagreGraph
